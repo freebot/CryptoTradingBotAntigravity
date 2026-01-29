@@ -1,6 +1,8 @@
+import os      # <--- FIX 1: Añadida esta línea que faltaba
 import time
 import json
 import logging
+import random  # <--- Movido aquí para buena práctica
 from src.data_loader import DataLoader
 from src.model import SentimentAnalyzer, PricePredictor
 from src.trader import Trader
@@ -18,9 +20,10 @@ SYMBOL = settings.get("symbol", "BTC/USDT")
 TIMEFRAME = settings.get("timeframe", "1h")
 
 def main():
-    print("🚀 Starting Antigravity Crypto Bot...")
+    print("🚀 Starting Antigravity Crypto Bot (Bybit Version)...")
     
     # Initialize components
+    # Nota: Asegúrate de que en DataLoader y Trader cambies el código a Bybit
     data_loader = DataLoader(sandbox=True)
     sentiment_model = SentimentAnalyzer()
     price_predictor = PricePredictor()
@@ -28,7 +31,6 @@ def main():
     
     print(f"Tracking {SYMBOL} on {TIMEFRAME} timeframe.")
     
-    # Fake news source for demo purposes
     fake_news = [
         "Bitcoin hits all time high as adoption grows.",
         "Market uncertainty rises due to regulatory concerns.",
@@ -41,11 +43,12 @@ def main():
             
             # 1. Fetch Data
             df = data_loader.fetch_ohlcv(SYMBOL, TIMEFRAME)
-            if df.empty:
+            
+            if df is None or df.empty: # <--- FIX 2: Mejor manejo de error
                 print("No data received. Waiting...")
-                time.sleep(60)
                 if os.getenv("RUN_ONCE"):
                      break
+                time.sleep(60)
                 continue
             
             # 2. Analyze Data (Technical)
@@ -56,9 +59,7 @@ def main():
             technical_signal = price_predictor.predict_next_move(df)
             print(f"Technical Signal: {technical_signal}")
             
-            # 3. Analyze Sentiment (Simulated with random news for now)
-            # In a real app, you'd fetch news from an API
-            import random
+            # 3. Analyze Sentiment
             current_news = random.sample(fake_news, 1)
             sentiment, score = sentiment_model.analyze(current_news)
             print(f"Sentiment: {sentiment} (Score: {score:.2f})")
@@ -74,12 +75,12 @@ def main():
             
             # 5. Execute Trade
             if action == "BUY":
-                # Calculate amount based on risk? For now fixed small amount
                 trader.place_order('buy', 0.001) 
             elif action == "SELL":
                 trader.place_order('sell', 0.001)
             
-            if os.getenv("RUN_ONCE"):
+            # --- CONTROL DE EJECUCIÓN ---
+            if os.getenv("RUN_ONCE") == "true": # <--- FIX 3: Comparación explícita
                 print("Single run completed. Exiting.")
                 break
 
@@ -88,6 +89,8 @@ def main():
             
     except KeyboardInterrupt:
         print("Bot stopped by user.")
+    except Exception as e:
+        print(f"❌ Critical Error: {e}")
 
 if __name__ == "__main__":
     main()
