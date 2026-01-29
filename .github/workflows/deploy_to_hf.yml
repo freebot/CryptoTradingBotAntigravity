@@ -21,4 +21,4 @@ jobs:
         run: |
           # Sustituye 'TU_USUARIO' y 'TU_SPACE' por tus datos reales de Hugging Face
           # Ejemplo: https://huggingface.co/spaces/juanperez/mi-bot-trading
-          git push --force https://freebot:$HF_TOKEN@huggingface.co/spaces/TU_USUARIO/TU_SPACE main
+          git push --force https://freebot:$HF_TOKEN@huggingface.co/spaces/freebot/crypto-bot main
