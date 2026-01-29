@@ -1,0 +1,24 @@
+name: Sync to Hugging Face Spaces
+
+on:
+  push:
+    branches: [main] # Se ejecutará cada vez que subas cambios a la rama principal
+  workflow_dispatch: # Permite ejecutarlo manualmente desde la pestaña Actions
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Push to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          # Sustituye 'TU_USUARIO' y 'TU_SPACE' por tus datos reales de Hugging Face
+          # Ejemplo: https://huggingface.co/spaces/juanperez/mi-bot-trading
+          git push --force https://freebot:$HF_TOKEN@huggingface.co/spaces/TU_USUARIO/TU_SPACE main
