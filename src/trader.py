@@ -7,13 +7,25 @@ load_dotenv()
 
 class Trader:
     def __init__(self, symbol, paper_trading=True):
-        self.exchange = ccxt.bybit({ # <--- Cambiar aquí también
-            'apiKey': os.getenv('BYBIT_API_KEY'),
-            'secret': os.getenv('BYBIT_SECRET_KEY'),
-        })
-        if paper_trading:
-            self.exchange.set_sandbox_mode(True)
+        self.symbol = symbol
+        self.filename = "trading_results.csv"
+        # Si el archivo no existe, creamos la cabecera
+        if not os.path.exists(self.filename):
+            with open(self.filename, "w") as f:
+                f.write("timestamp,action,price,amount\n")
 
+    def place_order(self, side, amount, price):
+        import datetime
+        timestamp = datetime.datetime.now().isoformat()
+        
+        print(f"✅ ORDEN VIRTUAL: {side.upper()} {amount} {self.symbol} a ${price}")
+        
+        # Guardamos el trade en el CSV
+        with open(self.filename, "a") as f:
+            f.write(f"{timestamp},{side},{price},{amount}\n")
+        
+        return True
+    
     def get_balance(self, currency='USDT'):
         try:
             balance = self.exchange.fetch_balance()
@@ -21,15 +33,6 @@ class Trader:
         except Exception as e:
             print(f"Error fetching balance: {e}")
             return 0.0
-
-    def place_order(self, side, amount):
-        try:
-            order = self.exchange.create_market_order(self.symbol, side, amount)
-            print(f"Order placed: {side} {amount} {self.symbol}")
-            return order
-        except Exception as e:
-            print(f"Error placing order: {e}")
-            return None
 
     def log_trade(self, trade_data):
         # Implement logging to CSV

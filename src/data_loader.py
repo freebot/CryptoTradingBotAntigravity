@@ -1,54 +1,42 @@
-import ccxt
-import pandas as pd
 import requests
+import pandas as pd
 import time
-import os
-
-
 
 class DataLoader:
     def __init__(self, sandbox=True):
-        self.exchange = ccxt.bybit({  # <--- Cambiar binance por bybit
-            'apiKey': os.getenv('BYBIT_API_KEY'), # <--- Usar nuevas variables
-            'secret': os.getenv('BYBIT_SECRET_KEY'),
-            'enableRateLimit': True,
-        })
-        if sandbox:
-            self.exchange.set_sandbox_mode(True)
-    
-    def fetch_ohlcv(self, symbol: str, timeframe: str = '1h', limit: int = 100) -> pd.DataFrame:
-        """
-        Fetch OHLCV data from the exchange.
-        """
-        try:
-            ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-            df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-            return df
-        except Exception as e:
-            print(f"Error fetching OHLCV data: {e}")
-            return pd.DataFrame()
+        self.base_url = "https://api.coingecko.com/api/v3"
 
-    def fetch_coingecko_data(self, coin_id: str, days: str = '30'):
+    def fetch_ohlcv(self, symbol, timeframe):
         """
-        Fetch historical data from CoinGecko.
+        Symbol debe ser el ID de CoinGecko (ej: 'bitcoin', 'ethereum')
+        Timeframe en la API gratuita de CoinGecko es automático según los días.
         """
-        url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart?vs_currency=usd&days={days}"
+        # Limpiamos el symbol por si viene como BTC/USDT
+        coin_id = symbol.split('/')[0].lower()
+        if coin_id == "btc": coin_id = "bitcoin"
+        if coin_id == "eth": coin_id = "ethereum"
+
+        print(f"Obteniendo datos de {coin_id} desde CoinGecko...")
+        
+        # Endpoint de CoinGecko para OHLC (Gratis)
+        # days=1 nos da datos de cada 30 min, days=7 o mas nos da datos cada 4 horas
+        url = f"{self.base_url}/coins/{coin_id}/ohlc?vs_currency=usd&days=7"
+        
         try:
             response = requests.get(url)
+            if response.status_code == 429:
+                print("⚠️ Rate limit alcanzado en CoinGecko. Esperando...")
+                return pd.DataFrame()
+            
             data = response.json()
-            prices = data.get('prices', [])
-            df = pd.DataFrame(prices, columns=['timestamp', 'price'])
+            
+            # Formato de respuesta: [ [timestamp, open, high, low, close], ... ]
+            df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close'])
+            
+            # Convertir timestamp a fecha legible
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            
             return df
         except Exception as e:
-            print(f"Error fetching CoinGecko data: {e}")
+            print(f"Error en CoinGecko: {e}")
             return pd.DataFrame()
-
-    def get_current_price(self, symbol: str) -> float:
-        try:
-            ticker = self.exchange.fetch_ticker(symbol)
-            return ticker['last']
-        except Exception as e:
-            print(f"Error fetching ticker: {e}")
-            return None

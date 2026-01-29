@@ -16,7 +16,7 @@ except FileNotFoundError:
     print("Settings file not found. Using defaults.")
     settings = {"symbol": "BTC/USDT", "timeframe": "1h"}
 
-SYMBOL = settings.get("symbol", "BTC/USDT")
+SYMBOL = settings.get("symbol", "bitcoin")
 TIMEFRAME = settings.get("timeframe", "1h")
 
 def main():
