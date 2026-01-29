@@ -7,23 +7,12 @@ load_dotenv()
 
 class Trader:
     def __init__(self, symbol, paper_trading=True):
-        self.symbol = symbol
-        self.api_key = os.getenv('BINANCE_API_KEY')
-        self.secret_key = os.getenv('BINANCE_SECRET_KEY')
-        
-        if not self.api_key or not self.secret_key:
-            print("Warning: API Keys not found in .env. Trading functionality will differ.")
-        
-        self.exchange = ccxt.binance({
-            'apiKey': self.api_key,
-            'secret': self.secret_key,
-            'enableRateLimit': True,
+        self.exchange = ccxt.bybit({ # <--- Cambiar aquí también
+            'apiKey': os.getenv('BYBIT_API_KEY'),
+            'secret': os.getenv('BYBIT_SECRET_KEY'),
         })
-        
         if paper_trading:
-            self.exchange.set_sandbox_mode(True) 
-            # Note: CCXT sandbox mode might require specific URL overrides for some exchanges, 
-            # but binance usually handles it with set_sandbox_mode(True) if supported.
+            self.exchange.set_sandbox_mode(True)
 
     def get_balance(self, currency='USDT'):
         try:

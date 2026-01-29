@@ -2,11 +2,16 @@ import ccxt
 import pandas as pd
 import requests
 import time
+import os
+
+
 
 class DataLoader:
-    def __init__(self, exchange_id='binance', sandbox=True):
-        self.exchange = getattr(ccxt, exchange_id)({
-            'enableRateLimit': True, 
+    def __init__(self, sandbox=True):
+        self.exchange = ccxt.bybit({  # <--- Cambiar binance por bybit
+            'apiKey': os.getenv('BYBIT_API_KEY'), # <--- Usar nuevas variables
+            'secret': os.getenv('BYBIT_SECRET_KEY'),
+            'enableRateLimit': True,
         })
         if sandbox:
             self.exchange.set_sandbox_mode(True)
