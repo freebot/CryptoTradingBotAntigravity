@@ -1,0 +1,8 @@
+ccxt
+transformers
+torch
+pandas
+python-dotenv
+requests
+scikit-learn
+numpy
