@@ -24,3 +24,6 @@ jobs:
           
           # Enviar al Cerebro 2 (Técnico / Backup)
           git push --force https://fr33b0t:$HF_TOKEN@huggingface.co/spaces/fr33b0t/crypto-tech-api main
+          
+          # Enviar al Dashboard (Visualización)
+          git push --force https://fr33b0t:$HF_TOKEN@huggingface.co/spaces/fr33b0t/crypto-bot main
