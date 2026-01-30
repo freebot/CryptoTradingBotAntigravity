@@ -14,6 +14,7 @@ from src.model import RemoteSentimentAnalyzer, PricePredictor
 from src.trader import Trader
 from src.utils import add_indicators
 from src.notion_logger import NotionLogger
+from src.supabase_logger import SupabaseLogger
 from src.news_fetcher import NewsFetcher
 
 logging.basicConfig(level=logging.INFO)
@@ -71,7 +72,9 @@ def run_bot_loop():
             analyzer.check_status()
 
     predictor = PricePredictor()
+    predictor = PricePredictor()
     notion = NotionLogger()
+    supabase = SupabaseLogger()
     fetcher = NewsFetcher()
 
     last_news_time = 0
@@ -110,6 +113,7 @@ def run_bot_loop():
                 trader.place_order("sell", 0.01, current_price, event)
                 # Log risk event with current sentiment
                 notion.log_trade(event, current_price, cached_sent, cached_conf, pnl)
+                supabase.log_trade(event, current_price, cached_sent, cached_conf, pnl)
             
             else:
                 # Trading Logic (New Entries)
@@ -118,10 +122,12 @@ def run_bot_loop():
                 if tech_signal == "UP" and cached_sent == "BULLISH" and not trader.is_holding:
                     trader.place_order("buy", 0.01, current_price, "AI_SIGNAL")
                     notion.log_trade("BUY", current_price, cached_sent, cached_conf, 0)
+                    supabase.log_trade("BUY", current_price, cached_sent, cached_conf, 0)
                 
                 elif tech_signal == "DOWN" and cached_sent == "BEARISH" and trader.is_holding:
                     trader.place_order("sell", 0.01, current_price, "AI_SIGNAL")
                     notion.log_trade("SELL", current_price, cached_sent, cached_conf, pnl)
+                    supabase.log_trade("SELL", current_price, cached_sent, cached_conf, pnl)
 
         except Exception as e:
             logging.error(f"Error in bot loop: {e}")

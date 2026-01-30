@@ -12,3 +12,6 @@ matplotlib
 fastapi
 uvicorn
 upstash-redis
+supabase
+streamlit
+plotly
