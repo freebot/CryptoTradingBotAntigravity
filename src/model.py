@@ -1,7 +1,5 @@
 import requests
 import os
-import gc
-import torch
 
 class RemoteSentimentAnalyzer:
     def __init__(self, api_url=None):
@@ -21,15 +19,32 @@ class RemoteSentimentAnalyzer:
             else:
                 print(f"API Error {response.status_code}: {response.text}")
                 return "NEUTRAL", 0.0
-        except Exception as e:
             print(f"API Request Failed: {e}")
             return "NEUTRAL", 0.0
+
+    def check_status(self):
+        """Pings the API to wake up the Hugging Face Space."""
+        if not self.api_url:
+            return False
+        try:
+            print(f"Pinging {self.api_url} to wake up Space...")
+            # Attempt a GET request to the base URL or the endpoint. 
+            # If the endpoint is /analyze (POST only), GET might return 405 but still wake it.
+            # Ideally we ping the root. Let's try to derive root or just hit the URL.
+            response = requests.get(self.api_url, timeout=30)
+            print(f"Ping response: {response.status_code}")
+            return True
+        except Exception as e:
+            print(f"Ping failed (might be starting up): {e}")
+            return False
 
 class SentimentAnalyzer:
     def __init__(self, model_name="ProsusAI/finbert"):
         print(f"Loading Sentiment Model locally: {model_name}...")
         try:
             from transformers import pipeline
+            import torch
+            import gc
             self.pipe = pipeline("text-classification", model=model_name, tokenizer=model_name)
             self.pipe.model.eval()  # Ensure model is in eval mode
             gc.collect()  # Free up memory
@@ -38,6 +53,7 @@ class SentimentAnalyzer:
             self.pipe = None
 
     def analyze(self, text_list):
+        import torch
         if not self.pipe:
             return "NEUTRAL", 0.0
         

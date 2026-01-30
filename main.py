@@ -66,6 +66,8 @@ def run_bot_loop():
         else:
             logging.info("Initializing Remote Sentiment Analyzer (Client Mode)...")
             analyzer = RemoteSentimentAnalyzer()
+            # 1. Wake up the Space with a Ping
+            analyzer.check_status()
 
     predictor = PricePredictor()
     notion = NotionLogger()
@@ -84,26 +86,32 @@ def run_bot_loop():
             current_price = float(df['close'].iloc[-1])
             df = add_indicators(df, settings)
 
-            # 1. Riesgo
+            current_price = float(df['close'].iloc[-1])
+            df = add_indicators(df, settings)
+
+            # 2. IA y Noticias (Obtener noticias y sentimiento ANTES de riesgo)
+            try:
+                if (time.time() - last_news_time) > (settings['news_fetch_interval_minutes'] * 60):
+                    news = fetcher.get_latest_news()
+                    if news:
+                        # 3. Consultar sentimiento a la API del Space
+                        logging.info("Analyzing news sentiment...")
+                        cached_sent, cached_conf = analyzer.analyze(news)
+                    else:
+                        logging.info("No news found to analyze.")
+                    last_news_time = time.time()
+            except Exception as e:
+                logging.error(f"⚠️ Error en módulo de noticias/IA: {e}")
+
+            # 4. Ejecutar lógica de riesgo y Notion
             event, pnl = trader.check_risk_management(current_price)
             if event:
                 trader.place_order("sell", 0.01, current_price, event)
-                notion.log_trade(event, current_price, "NEUTRAL", 1, pnl)
+                # Log risk event with current sentiment
+                notion.log_trade(event, current_price, cached_sent, cached_conf, pnl)
             
             else:
-                # 2. IA y Noticias
-                try:
-                    if (time.time() - last_news_time) > (settings['news_fetch_interval_minutes'] * 60):
-                        news = fetcher.get_latest_news()
-                        # Use the shared analyzer instance
-                        if news:
-                            cached_sent, cached_conf = analyzer.analyze(news)
-                        else:
-                            logging.info("No news found to analyze.")
-                        last_news_time = time.time()
-                except Exception as e:
-                    logging.error(f"⚠️ Error en módulo de noticias/IA: {e}")
-
+                # Trading Logic (New Entries)
                 tech_signal = predictor.predict_next_move(df)
 
                 if tech_signal == "UP" and cached_sent == "BULLISH" and not trader.is_holding:
