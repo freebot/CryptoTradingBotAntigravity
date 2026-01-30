@@ -1,6 +1,6 @@
 ---
-title: Antigravity Crypto Bot
-emoji: 🚀
+title: Antigravity Crypto Bot 🧠📈
+emoji: 🤖
 colorFrom: blue
 colorTo: purple
 sdk: docker
@@ -8,102 +8,103 @@ app_file: main.py
 pinned: false
 ---
 
-# 🚀 Project Antigravity: ML Crypto Trading Bot
+# 🚀 Project Antigravity: Intelligent ML Trading Bot
 
-Este es un proyecto experimental diseñado para construir un bot de trading de criptomonedas automatizado utilizando Machine Learning. El objetivo principal es el aprendizaje del ciclo completo de desarrollo: desde la obtención de datos y entrenamiento de modelos, hasta la ejecución de órdenes en un entorno de prueba (dinero ficticio).
+Este es un ecosistema de trading algorítmico diseñado no solo para operar, sino para evolucionar. El proyecto utiliza **Machine Learning (NLP)** para entender el sentimiento del mercado y **Gestión de Riesgos Cuantitativa** para proteger el capital. 
 
-Desarrollado con Antigravity, este proyecto aprovecha las capacidades de "Vibecoding" para agilizar la escritura de código y la orquestación de agentes.
-🎯 Objetivos del Proyecto
+Desarrollado con **Antigravity**, este bot representa el ciclo completo de un ingeniero de software financiero: desde la simulación en la nube hasta el monitoreo profesional en **Notion**.
 
-    Aprender: Entender cómo interactúan las APIs financieras con modelos de IA.
+## 📊 Dashboard de Control (Notion)
+A diferencia de otros bots, Project Antigravity no solo escupe texto en una consola. Hemos integrado una **"Pantalla de Comando" en Notion** donde puedes ver en tiempo real desde cualquier dispositivo:
+- **Avance del ML:** Sentimiento detectado y nivel de confianza de la IA.
+- **Estado de Cuenta:** Ganancias y pérdidas (PnL) acumuladas.
+- **Bitácora de Decisiones:** Por qué el bot decidió comprar, vender o ejecutar un Stop Loss.
 
-    Predecir: Usar modelos de Hugging Face para análisis de sentimiento y predicción de precios.[1]
+---
 
-    Simular: Operar en el Binance Testnet (dinero falso) para medir el rendimiento sin riesgo.
+## 🏗️ Arquitectura del Sistema
+El bot está diseñado de forma modular para facilitar su escalabilidad:
 
-    Nube: Ejecutar el bot de forma gratuita o de bajo coste utilizando GitHub Actions o Hugging Face Spaces.
-
-🛠️ Tecnologías y Recursos[2][3][4][5][6][7]
-
-    IDE & Framework: Antigravity (Google Gemini 3 Agent Framework).
-
-    Machine Learning: Hugging Face (Transformers para sentimiento y LSTMs para series temporales).
-
-    Exchange API: Binance Testnet (Paper Trading con $15,000 ficticios).
-
-    Data Source: CoinGecko API (Datos históricos y market cap gratuitos).
-
-    Lenguaje: Python 3.10+.
-
-    Infraestructura: GitHub Actions (para ejecución programada) o Hugging Face Spaces (Docker).
-
-🏗️ Estructura del Proyecto
-code Text
-
+```text
 antigravity-trade-bot/
-├── .github/workflows/      # Ejecución automática (cron job)
+├── .github/workflows/      # Orquestación en la nube (GitHub Actions)
 ├── src/
-│   ├── data_loader.py      # Conexión con CoinGecko/Binance
-│   ├── model.py            # Lógica de ML (Hugging Face)
-│   ├── trader.py           # Ejecución de órdenes en Testnet
-│   └── utils.py            # Indicadores técnicos (RSI, MACD)
-├── config/
-│   └── settings.json       # Configuración de pares (ej. BTC/USDT)
-├── main.py                 # Punto de entrada
-├── requirements.txt        # Dependencias
-└── .env.example            # Variables de entorno (API Keys)
+│   ├── data_loader.py      # Motor de datos robusto (CoinGecko API)
+│   ├── model.py            # Cerebro: FinBERT (Sentiment) + Predicción Técnica
+│   ├── trader.py           # Motor de Riesgo: Stop Loss & Take Profit
+│   ├── notion_logger.py    # Conexión con Dashboard externo (Notion API)
+│   └── utils.py            # Indicadores matemáticos (RSI, EMA, etc.)
+├── main.py                 # Orquestador principal del ciclo de trading
+└── requirements.txt        # Dependencias de Python
 
-🚀 Guía de Configuración
-1. Obtener API Keys (Gratis)
+🧠 Inteligencia y Estrategia
 
-    Binance Testnet: Ve a Binance Spot Testnet, logueate con tu GitHub y genera tu API_KEY y SECRET_KEY.
+El bot opera bajo una lógica de Confirmación Dual:
 
-    Hugging Face: Crea una cuenta en Hugging Face y obtén un Token de lectura para descargar modelos.
+    Análisis de Sentimiento: Utiliza FinBERT de Hugging Face para procesar noticias. Solo compra si el sentimiento es marcadamente "Bullish" (>0.80).
 
-2. Configurar el Entorno
+    Filtro Técnico: Utiliza indicadores (RSI, Medias Móviles) para confirmar que el precio no está sobrecomprado.
 
-Copia el archivo .env.example a .env y rellena tus datos:
-code Bash
+    🛡️ Risk Management (Nivel Pro):
 
-BINANCE_API_KEY=tu_key_de_testnet
-BINANCE_SECRET_KEY=tu_secret_de_testnet
-HF_TOKEN=tu_token_de_huggingface
+        Stop Loss (2%): Si el mercado se vuelve en contra, el bot corta la pérdida inmediatamente.
 
-3. Instalación
+        Take Profit (5%): El bot asegura ganancias automáticamente al alcanzar el objetivo.
 
-Si usas Antigravity, puedes simplemente pedirle al agente: "Instala las dependencias necesarias para un bot de trading con CCXT y Hugging Face" o correr:
-code Bash
+📈 Plan de Evolución: De "Estudiante" a "Pro"
 
-pip install ccxt transformers torch pandas python-dotenv
+Para ganar dinero real, el bot seguirá esta hoja de ruta de crecimiento:
+Fase 1: Simulación y Nube (Estado Actual)
 
-🧠 Lógica de Inteligencia Artificial
+    Objetivo: Validar la estrategia sin riesgo.
 
-El bot utiliza un enfoque de Ensemble Learning:
+    Entorno: GitHub Actions / Hugging Face Spaces.
 
-    Análisis de Sentimiento: Usa el modelo ProsusAI/finbert de Hugging Face para analizar noticias recientes y determinar si el mercado es "Bullish" o "Bearish".
+    Datos: CoinGecko API (Evita bloqueos de IP).
 
-    Predicción Técnica: Un modelo de regresión simple o LSTM para predecir el siguiente movimiento basado en el histórico de precios.
+    Ejecución: Virtual Paper Trading.
 
-    Decisión: Solo ejecuta una compra si ambos modelos (Sentimiento + Técnico) coinciden.
+Fase 2: Inteligencia Aumentada (Próximamente)
 
-☁️ Despliegue en la Nube (Gratis)
+    Mejora: Conexión con NewsAPI para leer noticias reales en tiempo real.
 
-Para que el bot corra 24/7 o por intervalos sin dejar tu PC encendida:
+    Eficiencia: Implementación de Trailing Stop Loss (el stop persigue el precio para maximizar ganancias).
 
-    Opción A (GitHub Actions): Configura un "Workflow" que se ejecute cada 1 hora. Es ideal para aprender cómo funcionan los pipelines de CI/CD aplicados a finanzas.
+    Análisis: Registro automático de errores y "alucinaciones" de la IA en Notion.
 
-    Opción B (Hugging Face Spaces): Crea un "Space" tipo Docker o Streamlit. Te permite tener una interfaz visual para ver tus ganancias en tiempo real.
+Fase 3: Operación Local (Salto a Real)
 
-📈 Medición de Resultados
+    Objetivo: Evitar bloqueos de IP de Exchanges (Binance/Bybit).
 
-El bot registrará cada operación en un archivo trades.csv local y mostrará:
+    Entorno: Ejecución en servidor local (Raspberry Pi o Laptop 24/7).
 
-    Balance Inicial: $15,000 (Mock)
+    Capital: Inyección de $20 USD reales para probar ejecución, comisiones (fees) y latencia.
 
-    Win Rate: % de operaciones ganadoras.
+Fase 4: Escalabilidad Cuantitativa
 
-    Profit/Loss (P&L): Ganancia neta acumulada.[8]
+    Optimización: Ajuste automático de parámetros basado en el Ratio de Sharpe.
 
-⚠️ Descargo de Responsabilidad (Disclaimer)
+    Diversificación: Operación multi-moneda (BTC, ETH, SOL) simultánea.
 
-Este proyecto es estrictamente educativo. El uso de algoritmos de trading conlleva riesgos financieros significativos. Nunca uses este bot con dinero real sin una validación exhaustiva y bajo tu propia responsabilidad.
+    Independencia: Migración a modelos de ML propios ajustados a cripto.
+
+🚀 Guía de Configuración Rápida
+1. Variables de Entorno (Secrets)
+
+Configura los siguientes secretos en tu repositorio de GitHub:
+
+    HF_TOKEN: Tu token de Hugging Face.
+
+    NOTION_TOKEN: Token de integración de Notion.
+
+    NOTION_DATABASE_ID: ID de tu base de datos en Notion.
+
+2. Conectar Notion
+
+    Crea una base de datos en Notion con columnas: Fecha, Accion, Precio, Sentimiento, Confianza ML, Profit Acumulado.
+
+    Agrega la conexión de tu integración de Notion a la página.
+
+⚠️ Descargo de Responsabilidad
+
+Este proyecto tiene fines exclusivamente educativos. El trading de criptomonedas implica un riesgo de pérdida total del capital. El autor no se hace responsable por pérdidas financieras derivadas del uso de este código. La fase 1 es puramente virtual.
