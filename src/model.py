@@ -1,11 +1,33 @@
-from transformers import pipeline
-import torch
-import random
+import requests
+import os
+
+class RemoteSentimentAnalyzer:
+    def __init__(self, api_url=None):
+        self.api_url = api_url or os.getenv("SENTIMENT_API_URL")
+        print(f"Initialized RemoteSentimentAnalyzer. API: {self.api_url}")
+
+    def analyze(self, text_list):
+        if not text_list or not self.api_url:
+            return "NEUTRAL", 0.0
+
+        try:
+            # We assume the endpoint is /analyze as configured previously
+            response = requests.post(self.api_url, json={"texts": text_list}, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("sentiment", "NEUTRAL"), data.get("confidence", 0.0)
+            else:
+                print(f"API Error {response.status_code}: {response.text}")
+                return "NEUTRAL", 0.0
+        except Exception as e:
+            print(f"API Request Failed: {e}")
+            return "NEUTRAL", 0.0
 
 class SentimentAnalyzer:
     def __init__(self, model_name="ProsusAI/finbert"):
-        print(f"Loading Sentiment Model: {model_name}...")
+        print(f"Loading Sentiment Model locally: {model_name}...")
         try:
+            from transformers import pipeline
             self.pipe = pipeline("text-classification", model=model_name, tokenizer=model_name)
         except Exception as e:
             print(f"Error loading model: {e}")

@@ -2,8 +2,12 @@ import os
 import time
 import json
 import logging
+import threading
+import uvicorn
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 from src.data_loader import DataLoader
-from src.model import SentimentAnalyzer, PricePredictor
+from src.model import SentimentAnalyzer, RemoteSentimentAnalyzer, PricePredictor
 from src.trader import Trader
 from src.utils import add_indicators
 from src.notion_logger import NotionLogger
@@ -11,7 +15,36 @@ from src.news_fetcher import NewsFetcher
 
 logging.basicConfig(level=logging.INFO)
 
-def main():
+# --- FastAPI Setup ---
+app = FastAPI()
+
+# Global analyzer instance to be shared
+analyzer = None
+
+class SentimentRequest(BaseModel):
+    texts: list[str]
+
+@app.post("/analyze")
+def analyze_sentiment(request: SentimentRequest):
+    global analyzer
+    if not analyzer:
+        raise HTTPException(status_code=503, detail="Model not loaded yet")
+    
+    try:
+        sentiment, confidence = analyzer.analyze(request.texts)
+        return {"sentiment": sentiment, "confidence": confidence}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/")
+def health_check():
+    return {"status": "running", "mode": "hybrid" if os.getenv("SPACE_ID") else "client"}
+
+# --- Bot Logic ---
+def run_bot_loop():
+    global analyzer
+    logging.info("Starting Trading Bot Loop...")
+    
     with open('config/settings.json') as f:
         settings = json.load(f)
 
@@ -20,7 +53,12 @@ def main():
     trader.stop_loss_pct = settings['stop_loss_pct']
     trader.take_profit_pct = settings['take_profit_pct']
     
-    analyzer = SentimentAnalyzer()
+    # Analyzer should be initialized by main() before calling this, 
+    # but as a fallback/safety check:
+    if analyzer is None:
+        logging.warning("Analyzer was not initialized in main. Initializing default Remote...")
+        analyzer = RemoteSentimentAnalyzer()
+
     predictor = PricePredictor()
     notion = NotionLogger()
     fetcher = NewsFetcher()
@@ -29,42 +67,78 @@ def main():
     cached_sent, cached_conf = "NEUTRAL", 0.5
 
     while True:
-        df = loader.fetch_ohlcv(settings['symbol'], settings['timeframe'])
-        if df.empty: 
-            time.sleep(60); continue
-        
-        current_price = float(df['close'].iloc[-1])
-        df = add_indicators(df, settings)
-
-        # 1. Riesgo
-        event, pnl = trader.check_risk_management(current_price)
-        if event:
-            trader.place_order("sell", 0.01, current_price, event)
-            notion.log_trade(event, current_price, "NEUTRAL", 1, pnl)
-        
-        else:
-            # 2. IA y Noticias
-            try:
-                if (time.time() - last_news_time) > (settings['news_fetch_interval_minutes'] * 60):
-                    news = fetcher.get_latest_news()
-                    cached_sent, cached_conf = analyzer.analyze(news)
-                    last_news_time = time.time()
-            except Exception as e:
-                logging.error(f"⚠️ Error en módulo de noticias/IA: {e}")
-                # Mantenemos el sentimiento anterior en caso de fallo intermitente
-
-            tech_signal = predictor.predict_next_move(df)
-
-            if tech_signal == "UP" and cached_sent == "BULLISH" and not trader.is_holding:
-                trader.place_order("buy", 0.01, current_price, "AI_SIGNAL")
-                notion.log_trade("BUY", current_price, cached_sent, cached_conf, 0)
+        try:
+            logging.info("Bot cycle: Fetching data...")
+            df = loader.fetch_ohlcv(settings['symbol'], settings['timeframe'])
+            if df.empty: 
+                time.sleep(60); continue
             
-            elif tech_signal == "DOWN" and cached_sent == "BEARISH" and trader.is_holding:
-                trader.place_order("sell", 0.01, current_price, "AI_SIGNAL")
-                notion.log_trade("SELL", current_price, cached_sent, cached_conf, pnl)
+            current_price = float(df['close'].iloc[-1])
+            df = add_indicators(df, settings)
 
-        if os.getenv("RUN_ONCE") == "true": break
+            # 1. Riesgo
+            event, pnl = trader.check_risk_management(current_price)
+            if event:
+                trader.place_order("sell", 0.01, current_price, event)
+                notion.log_trade(event, current_price, "NEUTRAL", 1, pnl)
+            
+            else:
+                # 2. IA y Noticias
+                try:
+                    if (time.time() - last_news_time) > (settings['news_fetch_interval_minutes'] * 60):
+                        news = fetcher.get_latest_news()
+                        # Use the shared analyzer instance
+                        if news:
+                            cached_sent, cached_conf = analyzer.analyze(news)
+                        else:
+                            logging.info("No news found to analyze.")
+                        last_news_time = time.time()
+                except Exception as e:
+                    logging.error(f"⚠️ Error en módulo de noticias/IA: {e}")
+
+                tech_signal = predictor.predict_next_move(df)
+
+                if tech_signal == "UP" and cached_sent == "BULLISH" and not trader.is_holding:
+                    trader.place_order("buy", 0.01, current_price, "AI_SIGNAL")
+                    notion.log_trade("BUY", current_price, cached_sent, cached_conf, 0)
+                
+                elif tech_signal == "DOWN" and cached_sent == "BEARISH" and trader.is_holding:
+                    trader.place_order("sell", 0.01, current_price, "AI_SIGNAL")
+                    notion.log_trade("SELL", current_price, cached_sent, cached_conf, pnl)
+
+        except Exception as e:
+            logging.error(f"Error in bot loop: {e}")
+
+        if os.getenv("RUN_ONCE") == "true": 
+            logging.info("RUN_ONCE is true, exiting bot loop.")
+            break
+            
         time.sleep(60)
+
+def main():
+    global analyzer
+    
+    if os.getenv("SPACE_ID"):
+        # Server Mode (Hugging Face Space)
+        logging.info("🚀 Starting in SERVER MODE (Hugging Face Space)")
+        # Load the heavy model locally
+        analyzer = SentimentAnalyzer() 
+        
+        # Start trading bot in background thread
+        bot_thread = threading.Thread(target=run_bot_loop, daemon=True)
+        bot_thread.start()
+        
+        # Start API Server (blocking)
+        uvicorn.run(app, host="0.0.0.0", port=7860)
+        
+    else:
+        # Client Mode (GitHub Actions / Local)
+        logging.info("🌍 Starting in CLIENT MODE")
+        # Use remote API
+        analyzer = RemoteSentimentAnalyzer() 
+        
+        # Run trading bot directly (blocking)
+        run_bot_loop()
 
 if __name__ == "__main__":
     main()

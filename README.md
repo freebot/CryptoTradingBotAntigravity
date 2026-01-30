@@ -22,20 +22,31 @@ A diferencia de otros bots, Project Antigravity no solo escupe texto en una cons
 
 ---
 
-## 🏗️ Arquitectura del Sistema
-El bot está diseñado de forma modular para facilitar su escalabilidad:
+## 🏗️ Arquitectura Híbrida: Client-Server
+El sistema ha evolucionado a una arquitectura distribuida inteligente para optimizar recursos:
+
+### 1. 🧠 El Cerebro (Hugging Face Space)
+Actúa como **Servidor de Inteligencia Artificial** y Bot Principal.
+- **Tecnología**: FastAPI + Uvicorn.
+- **Función**: Carga el modelo pesado `FinBERT` (500MB+) en memoria RAM *una sola vez*.
+- **Endpoint**: Expone una API REST (`POST /analyze`) para servir análisis de sentimiento a otros agentes.
+- **Autonomía**: Ejecuta su propio ciclo de trading en segundo plano (hilo paralelo).
+
+### 2. ⚡ El Agente (GitHub Actions / Local)
+Actúa como **Cliente Ligero**.
+- **Tecnología**: Python plano (sin PyTorch).
+- **Eficiencia**: En lugar de descargar modelos pesados, utiliza `RemoteSentimentAnalyzer` para consultar al Cerebro vía API.
+- **Ventaja**: Ejecución ultra-rápida (segundos vs minutos) y mínimo consumo de recursos en CI/CD.
 
 ```text
 antigravity-trade-bot/
-├── .github/workflows/      # Orquestación en la nube (GitHub Actions)
+├── .github/workflows/      # Orquestación: Despierta al cerebro antes de operar
 ├── src/
-│   ├── data_loader.py      # Motor de datos robusto (CoinGecko API)
-│   ├── model.py            # Cerebro: FinBERT (Sentiment) + Predicción Técnica
-│   ├── trader.py           # Motor de Riesgo: Stop Loss & Take Profit
-│   ├── notion_logger.py    # Conexión con Dashboard externo (Notion API)
-│   └── utils.py            # Indicadores matemáticos (RSI, EMA, etc.)
-├── main.py                 # Orquestador principal del ciclo de trading
-└── requirements.txt        # Dependencias de Python
+│   ├── app.py              # (Integrado en main) Servidor FastAPI
+│   ├── model.py            # Doble Motor: Local (Transformers) y Remoto (API Client)
+│   ├── main.py             # Orquestador Híbrido: Detecta entorno y se adapta
+│   └── ...
+```
 
 🧠 Inteligencia y Estrategia
 
