@@ -15,6 +15,7 @@ from src.trader import Trader
 from src.utils import add_indicators
 from src.notion_logger import NotionLogger
 from src.supabase_logger import SupabaseLogger
+from src.telegram_logger import TelegramLogger
 from src.news_fetcher import NewsFetcher
 
 logging.basicConfig(level=logging.INFO)
@@ -75,6 +76,7 @@ def run_bot_loop():
     predictor = PricePredictor()
     notion = NotionLogger()
     supabase = SupabaseLogger()
+    telegram = TelegramLogger()
     fetcher = NewsFetcher()
 
     last_news_time = 0
@@ -82,6 +84,7 @@ def run_bot_loop():
 
     while True:
         try:
+            telegram.send_message("🔄 Iniciando ciclo de trading...")
             logging.info("Bot cycle: Fetching data...")
             df = loader.fetch_ohlcv(settings['symbol'], settings['timeframe'])
             if df.empty: 
@@ -109,25 +112,50 @@ def run_bot_loop():
 
             # 4. Ejecutar lógica de riesgo y Notion
             event, pnl = trader.check_risk_management(current_price)
+            action_taken = None
+            
             if event:
                 trader.place_order("sell", 0.01, current_price, event)
+                action_taken = "SELL"
                 # Log risk event with current sentiment
-                notion.log_trade(event, current_price, cached_sent, cached_conf, pnl)
-                supabase.log_trade(event, current_price, cached_sent, cached_conf, pnl)
-            
+                try:
+                    notion.log_trade(event, current_price, cached_sent, cached_conf, pnl)
+                    supabase.log_trade(event, current_price, cached_sent, cached_conf, pnl)
+                except Exception as log_err:
+                    telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
+
             else:
                 # Trading Logic (New Entries)
                 tech_signal = predictor.predict_next_move(df)
 
                 if tech_signal == "UP" and cached_sent == "BULLISH" and not trader.is_holding:
                     trader.place_order("buy", 0.01, current_price, "AI_SIGNAL")
-                    notion.log_trade("BUY", current_price, cached_sent, cached_conf, 0)
-                    supabase.log_trade("BUY", current_price, cached_sent, cached_conf, 0)
+                    action_taken = "BUY"
+                    try:
+                        notion.log_trade("BUY", current_price, cached_sent, cached_conf, 0)
+                        supabase.log_trade("BUY", current_price, cached_sent, cached_conf, 0)
+                    except Exception as log_err:
+                         telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
                 
                 elif tech_signal == "DOWN" and cached_sent == "BEARISH" and trader.is_holding:
                     trader.place_order("sell", 0.01, current_price, "AI_SIGNAL")
-                    notion.log_trade("SELL", current_price, cached_sent, cached_conf, pnl)
-                    supabase.log_trade("SELL", current_price, cached_sent, cached_conf, pnl)
+                    action_taken = "SELL"
+                    try:
+                        notion.log_trade("SELL", current_price, cached_sent, cached_conf, pnl)
+                        supabase.log_trade("SELL", current_price, cached_sent, cached_conf, pnl)
+                    except Exception as log_err:
+                         telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
+            
+            # Report final status for this cycle
+            if action_taken:
+                telegram.report_cycle(action_taken, current_price, cached_sent)
+            else:
+                telegram.report_cycle("HOLD", current_price, cached_sent)
+
+        except Exception as e:
+            error_msg = f"Error in bot loop: {e}"
+            logging.error(error_msg)
+            telegram.report_cycle("ERROR", error=error_msg)
 
         except Exception as e:
             logging.error(f"Error in bot loop: {e}")

@@ -1,106 +1,100 @@
 import streamlit as st
 import pandas as pd
-from supabase import create_client, Client
+from supabase import create_client
 import os
-import time
 
-# --- Configuration ---
-st.set_page_config(page_title="Antigravity Trading Terminal", layout="wide", page_icon="🚀")
+# --- Page Config ---
+st.set_page_config(
+    page_title="Crypto Bot Dashboard",
+    page_icon="🚀",
+    layout="wide"
+)
 
-# --- Initialize Connections ---
+# --- Configuration & Styles ---
+st.title("🚀 Antigravity Trading Terminal")
+st.markdown("### Real-time Market & Bot Intelligence")
+
+# --- Database Connection ---
 @st.cache_resource
-def init_supabase():
+def init_connection():
     url = os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_KEY")
     if not url or not key:
         return None
     return create_client(url, key)
 
-supabase = init_supabase()
+supabase = init_connection()
 
-def get_data():
+# --- Data Fetching ---
+def get_trading_data():
     if not supabase:
-        st.error("⚠️ Supabase Credentials (SUPABASE_URL, SUPABASE_KEY) are missing in Space Settings.")
+        st.error("⚠️ Database connection failed. Check SUPABASE_URL and SUPABASE_KEY secrets.")
         return pd.DataFrame()
     
     try:
-        # Fetch last 200 logs
-        response = supabase.table("trading_logs").select("*").order("created_at", desc=True).limit(200).execute()
+        # Fetching logs
+        response = supabase.table("trading_logs").select("*").order("created_at", desc=True).limit(500).execute()
         data = response.data
         if not data:
             return pd.DataFrame()
         
         df = pd.DataFrame(data)
-        # Ensure created_at is datetime
         df['created_at'] = pd.to_datetime(df['created_at'])
         return df
     except Exception as e:
-        st.error(f"Error connecting to DB: {e}")
+        st.error(f"Error fetching data: {e}")
         return pd.DataFrame()
 
-# --- Main Dashboard Logic ---
-st.title('🚀 Antigravity Trading Terminal')
-
-# Auto-refresh button
+# --- Main App ---
 if st.button("🔄 Refresh Data"):
     st.cache_data.clear()
 
-df = get_data()
+df = get_trading_data()
 
 if df.empty:
-    st.info("👋 Welcome! The database is currently empty. Waiting for the bot to make its first move...")
-    st.markdown("make sure your bot is running and `UPSTASH_REDIS` + `SUPABASE` variables are set correctly.")
-
+    st.info("Waiting for data... The bot hasn't logged any trades yet.")
 else:
-    # --- Data Processing ---
-    # Sort by date ascending for calculations
-    df_sorted = df.sort_values(by='created_at', ascending=True)
-    
-    # 1. Metrics Calculation
-    latest_log = df_sorted.iloc[-1]
-    current_price = latest_log.get('price', 0.0)
-    current_sentiment = latest_log.get('sentiment', "NEUTRAL")
-    
-    # Virtual Balance Calculation (Theoretical)
-    # Assumes Start = $10,000 and full compounding on every SELL
-    virtual_balance = 10000.0
-    for index, row in df_sorted.iterrows():
-        if row['action'] == 'SELL':
-            # pnl is percentage (e.g., 5.0 for 5%)
-            pnl_pct = row.get('pnl', 0.0)
-            # Assuming we trade with full portfolio for simplicity of this metric, 
-            # or we can assume fixed position. Let's assume proportional growth.
-            # Trade logic in Trader.py: virtual_balance += (virtual_balance * (profit_pct / 100))
-            # Wait, Trader.py logic was exactly that. So we replicate it.
-            virtual_balance += virtual_balance * (pnl_pct / 100)
+    # Sort for time-series visualization
+    df = df.sort_values(by="created_at")
+    last_row = df.iloc[-1]
 
-    # 2. Display Metrics Columns
+    # --- KPIs / Metrics ---
     col1, col2, col3 = st.columns(3)
     
+    price = last_row.get("price", 0)
+    sentiment = last_row.get("sentiment", "N/A")
+    confidence = last_row.get("confidence", 0)
+    
+    # Calculate a mock 'Virtual Balance' based on performance
+    # Initial balance 10k, compounding PnL from SELL actions
+    balance = 10000.0
+    for _, row in df.iterrows():
+        if row['action'] == 'SELL':
+            pnl_pct = row.get('pnl', 0)
+            balance += balance * (pnl_pct / 100.0)
+
     with col1:
-        st.metric("💰 Current Price", f"${current_price:,.2f}")
+        st.metric("💰 Current Price", f"${price:,.2f}")
     
     with col2:
-        sentiment_color = "off"
-        if current_sentiment == "BULLISH":
-            sentiment_color = "normal" # Greenish usually in standard themes or custom delta
-        st.metric("🧠 AI Sentiment", current_sentiment, delta=None) # Start simple
-
+        st.metric("🧠 AI Sentiment", f"{sentiment}", f"{confidence:.2f} Conf.")
+        
     with col3:
-        # Show delta from 10k
-        pnl_total_pct = ((virtual_balance - 10000) / 10000) * 100
-        st.metric("💼 Virtual Balance", f"${virtual_balance:,.2f}", f"{pnl_total_pct:.2f}%")
+        pnl_total = (balance - 10000)
+        st.metric("💼 Virtual Balance", f"${balance:,.2f}", f"{pnl_total:+.2f} ({((balance/10000)-1)*100:.2f}%)")
 
-    # 3. Price Chart
-    st.subheader("Price History")
-    # Streamlit line_chart expects index to be x-axis usually or specify x/y
-    chart_data = df_sorted[['created_at', 'price']].set_index('created_at')
+    st.divider()
+
+    # --- Charts ---
+    st.subheader("📈 Price History")
+    # Setting index for proper x-axis
+    chart_data = df.set_index("created_at")[["price"]]
     st.line_chart(chart_data)
 
-    # 4. Recent Trades Table (Raw Data)
+    # --- Recent Activity Log ---
     st.subheader("📋 Recent Activity")
-    
-    # Formatting for display
-    display_df = df.copy() # Latest first
-    display_df = display_df[['created_at', 'action', 'price', 'sentiment', 'confidence', 'pnl']]
-    st.dataframe(display_df, use_container_width=True)
+    # Show latest first
+    st.dataframe(
+        df[["created_at", "action", "price", "sentiment", "confidence", "pnl"]].sort_values("created_at", ascending=False),
+        use_container_width=True
+    )

@@ -119,3 +119,13 @@ Configura los siguientes secretos en tu repositorio de GitHub:
 ⚠️ Descargo de Responsabilidad
 
 Este proyecto tiene fines exclusivamente educativos. El trading de criptomonedas implica un riesgo de pérdida total del capital. El autor no se hace responsable por pérdidas financieras derivadas del uso de este código. La fase 1 es puramente virtual.
+
+---
+title: Crypto Bot Dashboard
+emoji: 📈
+colorFrom: blue
+colorTo: purple
+sdk: streamlit
+app_file: app.py
+pinned: false
+---

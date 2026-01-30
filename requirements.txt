@@ -6,7 +6,6 @@ python-dotenv
 requests
 scikit-learn
 numpy
-
 yfinance
 matplotlib
 fastapi
