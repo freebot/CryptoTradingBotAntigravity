@@ -1,10 +1,11 @@
 ---
-title: Antigravity Crypto Bot 🧠📈
-emoji: 🤖
+title: Crypto Bot Dashboard
+emoji: 📈
 colorFrom: blue
 colorTo: purple
-sdk: docker
-app_file: main.py
+sdk: streamlit
+sdk_version: 1.35.0
+app_file: app.py
 pinned: false
 ---
 
@@ -25,26 +26,26 @@ A diferencia de otros bots, Project Antigravity no solo escupe texto en una cons
 ## 🏗️ Arquitectura Híbrida: Client-Server
 El sistema ha evolucionado a una arquitectura distribuida inteligente para optimizar recursos:
 
-### 1. 🧠 El Cerebro (Hugging Face Space)
-Actúa como **Servidor de Inteligencia Artificial** y Bot Principal.
-- **Tecnología**: FastAPI + Uvicorn.
-- **Función**: Carga el modelo pesado `FinBERT` (500MB+) en memoria RAM *una sola vez*.
-- **Endpoint**: Expone una API REST (`POST /analyze`) para servir análisis de sentimiento a otros agentes.
-- **Autonomía**: Ejecuta su propio ciclo de trading en segundo plano (hilo paralelo).
+### 1. 🧠 Los Cerebros (Hugging Face Spaces Distribuidos)
+El sistema utiliza una arquitectura de microservicios:
+- **Crypto Sentiment API**: Servidor FastAPI dedicado a IA (FinBERT) para análisis de noticias.
+- **Crypto Tech API**: Servidor FastAPI para análisis técnico y backup.
+- **Crypto Bot Dashboard**: Panel de visualización en Streamlit para monitoreo humano.
 
 ### 2. ⚡ El Agente (GitHub Actions / Local)
 Actúa como **Cliente Ligero**.
 - **Tecnología**: Python plano (sin PyTorch).
-- **Eficiencia**: En lugar de descargar modelos pesados, utiliza `RemoteSentimentAnalyzer` para consultar al Cerebro vía API.
+- **Eficiencia**: En lugar de descargar modelos pesados, utiliza `RemoteSentimentAnalyzer` para consultar a los Cerebros vía API.
 - **Ventaja**: Ejecución ultra-rápida (segundos vs minutos) y mínimo consumo de recursos en CI/CD.
 
 ```text
 antigravity-trade-bot/
 ├── .github/workflows/      # Orquestación: Despierta al cerebro antes de operar
 ├── src/
-│   ├── app.py              # (Integrado en main) Servidor FastAPI
-│   ├── model.py            # Doble Motor: Local (Transformers) y Remoto (API Client)
-│   ├── main.py             # Orquestador Híbrido: Detecta entorno y se adapta
+│   ├── app.py              # Dashboard (Streamlit)
+│   ├── sentiment_brain.py  # API de Sentimiento (FastAPI)
+│   ├── tech_brain.py       # API Técnica (FastAPI)
+│   ├── main.py             # Agente de Trading
 │   └── ...
 ```
 
@@ -119,13 +120,3 @@ Configura los siguientes secretos en tu repositorio de GitHub:
 ⚠️ Descargo de Responsabilidad
 
 Este proyecto tiene fines exclusivamente educativos. El trading de criptomonedas implica un riesgo de pérdida total del capital. El autor no se hace responsable por pérdidas financieras derivadas del uso de este código. La fase 1 es puramente virtual.
-
----
-title: Crypto Bot Dashboard
-emoji: 📈
-colorFrom: blue
-colorTo: purple
-sdk: streamlit
-app_file: app.py
-pinned: false
----
