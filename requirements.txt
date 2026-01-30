@@ -6,4 +6,6 @@ python-dotenv
 requests
 scikit-learn
 numpy
-pandas_ta
+
+yfinance
+matplotlib

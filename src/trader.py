@@ -3,13 +3,13 @@ import datetime
 import pandas as pd
 
 class Trader:
-    def __init__(self, symbol, paper_trading=True):
+    def __init__(self, symbol, stop_loss_pct=0.02, take_profit_pct=0.05, paper_trading=True):
         self.symbol = symbol
         self.filename = "trading_results.csv"
         
-        # --- Parámetros de Riesgo Virtual ---
-        self.stop_loss_pct = 0.02   # 2% máximo de pérdida
-        self.take_profit_pct = 0.05  # 5% objetivo de ganancia
+        # --- Parámetros de Riesgo (Configurables) ---
+        self.stop_loss_pct = stop_loss_pct
+        self.take_profit_pct = take_profit_pct
         
         # --- Estado de la Cartera Virtual ---
         self.is_holding = False

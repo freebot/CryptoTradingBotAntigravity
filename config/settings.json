@@ -6,5 +6,8 @@
     "macd_fast": 12,
     "macd_slow": 26,
     "macd_signal": 9,
-    "sentiment_threshold": 0.5
+    "sentiment_threshold": 0.5,
+    "stop_loss_pct": 0.02,
+    "take_profit_pct": 0.05,
+    "news_fetch_interval_minutes": 60
 }

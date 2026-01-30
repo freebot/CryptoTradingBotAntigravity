@@ -26,6 +26,10 @@ except FileNotFoundError:
 SYMBOL = settings.get("symbol", "bitcoin")
 TIMEFRAME = settings.get("timeframe", "1h")
 
+from src.news_fetcher import NewsFetcher
+
+# ... (existing imports)
+
 def main():
     print("\n" + "="*50)
     print("🚀 ANTIGRAVITY CRYPTO BOT - MODO VIRTUAL PRO")
@@ -35,23 +39,24 @@ def main():
     data_loader = DataLoader()
     sentiment_model = SentimentAnalyzer()
     price_predictor = PricePredictor()
-    trader = Trader(SYMBOL)
+    # Configurar parámetros de riesgo desde settings
+    stop_loss = settings.get("stop_loss_pct", 0.02)
+    take_profit = settings.get("take_profit_pct", 0.05)
+    
+    trader = Trader(SYMBOL, stop_loss_pct=stop_loss, take_profit_pct=take_profit)
     notion = NotionLogger()
+    news_fetcher = NewsFetcher() # Inicializar NewsFetcher
 
     # Variables para seguimiento de sesión
     balance_inicial = 10000.0 
     print(f"📡 Monitoreando: {SYMBOL.upper()}")
     print(f"📊 Dashboard Notion: CONECTADO")
-    print(f"🛡️ Configuración: SL 2% | TP 5%")
+    print(f"🛡️ Configuración: SL {stop_loss*100:.1f}% | TP {take_profit*100:.1f}%")
 
-    # Noticias de ejemplo (Simulación hasta conectar NewsAPI)
-    fake_news = [
-        "Bitcoin price stabilizes as institutional investors accumulate.",
-        "New crypto regulations could impact market liquidity negatively.",
-        "Major retailer announces it will accept Bitcoin payments soon.",
-        "Technical breakdown suggests a short-term bearish trend for BTC.",
-        "Global markets rally, pushing crypto assets to new monthly highs."
-    ]
+    # Variables de estado para cache de noticias
+    last_news_time = 0
+    cached_sentiment = "NEUTRAL"
+    cached_confidence = 0.0
 
     try:
         while True:
@@ -72,14 +77,13 @@ def main():
             print(f"💰 Precio Actual: ${current_price:,.2f}")
 
             # --- 4. GESTIÓN DE RIESGO (Prioridad 1) ---
-            # Si ya tenemos una posición abierta, revisamos si toca vender por SL o TP
             risk_event, pnl_pct = trader.check_risk_management(current_price)
             
             if risk_event:
                 print(f"🚨 {risk_event} DISPARADO! Cerrando posición...")
                 trader.place_order("sell", 0.01, current_price, reason=risk_event)
                 
-                # Actualizar Notion con el cierre por riesgo
+                # Actualizar Notion
                 notion.log_trade(
                     action=risk_event,
                     price=current_price,
@@ -91,12 +95,31 @@ def main():
             
             else:
                 # --- 5. ANÁLISIS DE IA Y SEÑALES (Prioridad 2) ---
-                # Solo buscamos nuevas señales si NO se disparó el riesgo
                 technical_signal = price_predictor.predict_next_move(df)
                 
-                # Analizar sentimiento con FinBERT
-                news_item = random.sample(fake_news, 1)
-                sentiment, confidence = sentiment_model.analyze(news_item)
+                # Control de Tiempos para Noticias (Evitar spam de requests)
+                news_interval = settings.get("news_fetch_interval_minutes", 60) * 60
+                
+                # Si es la primera ejecución O ya pasó el tiempo configurado
+                if (time.time() - last_news_time) > news_interval:
+                    print(f"📰 Leyendo noticias del mercado (Intervalo: {settings.get('news_fetch_interval_minutes', 60)}m)...")
+                    real_news = news_fetcher.get_latest_news(limit=3)
+                    
+                    # Analizar el sentimiento promedio
+                    headline_to_analyze = real_news[0] if real_news else "Bitcoin is neutral"
+                    print(f"   ℹ️ Noticia Principal: {headline_to_analyze[:60]}...")
+                    
+                    sentiment, confidence = sentiment_model.analyze([headline_to_analyze])
+                    
+                    # Actualizar estado cacheado
+                    last_news_time = time.time()
+                    cached_sentiment = sentiment
+                    cached_confidence = confidence
+                else:
+                    # Usar valores cacheados
+                    sentiment = cached_sentiment
+                    confidence = cached_confidence
+                    print(f"🧠 Usando sentimiento cacheado: {sentiment} ({confidence:.2f})")
                 
                 print(f"📊 Señal Técnica: {technical_signal} | 🧠 IA: {sentiment} ({confidence:.2f})")
 
