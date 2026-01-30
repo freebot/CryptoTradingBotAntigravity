@@ -44,10 +44,14 @@ def main():
         
         else:
             # 2. IA y Noticias
-            if (time.time() - last_news_time) > (settings['news_fetch_interval_minutes'] * 60):
-                news = fetcher.get_latest_news()
-                cached_sent, cached_conf = analyzer.analyze(news)
-                last_news_time = time.time()
+            try:
+                if (time.time() - last_news_time) > (settings['news_fetch_interval_minutes'] * 60):
+                    news = fetcher.get_latest_news()
+                    cached_sent, cached_conf = analyzer.analyze(news)
+                    last_news_time = time.time()
+            except Exception as e:
+                logging.error(f"⚠️ Error en módulo de noticias/IA: {e}")
+                # Mantenemos el sentimiento anterior en caso de fallo intermitente
 
             tech_signal = predictor.predict_next_move(df)
 
