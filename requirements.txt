@@ -11,3 +11,4 @@ yfinance
 matplotlib
 fastapi
 uvicorn
+upstash-redis

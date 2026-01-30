@@ -1,25 +1,79 @@
 import os
 import datetime
 import pandas as pd
+import os
+import datetime
+import pandas as pd
+from upstash_redis import Redis
 
 class Trader:
-    def __init__(self, symbol, stop_loss_pct=0.02, take_profit_pct=0.05, paper_trading=True):
+    def __init__(self, symbol, stop_loss_pct=0.02, take_profit_pct=0.05):
         self.symbol = symbol
         self.filename = "trading_results.csv"
+        
+        # --- Redis Connection for State Persistence ---
+        url = os.getenv("UPSTASH_REDIS_REST_URL")
+        token = os.getenv("UPSTASH_REDIS_REST_TOKEN")
+        
+        self.redis = None
+        if url and token:
+            try:
+                self.redis = Redis(url=url, token=token)
+                # Test connection (simple get)
+                self.redis.get("test_connection")
+                print("✅ Connected to Upstash Redis for State Memory")
+            except Exception as e:
+                print(f"⚠️ Redis connection failed: {e}. Using local memory (stateless).")
         
         # --- Parámetros de Riesgo (Configurables) ---
         self.stop_loss_pct = stop_loss_pct
         self.take_profit_pct = take_profit_pct
         
-        # --- Estado de la Cartera Virtual ---
-        self.is_holding = False
-        self.entry_price = 0.0
-        self.virtual_balance = 10000.0 # Empezamos con $10,000 USD ficticios
+        # --- Estado Inicial (Solo si no existe en Redis) ---
+        if self.redis:
+            # Initialize keys if they assume empty state
+            if not self.redis.get("trader:is_holding"):
+                self.redis.set("trader:is_holding", "0")
+            if not self.redis.get("trader:entry_price"):
+                self.redis.set("trader:entry_price", "0.0")
+        else:
+            # Fallback local state
+            self._is_holding = False
+            self._entry_price = 0.0
 
-        # Crear archivo de logs si no existe
+        self.virtual_balance = 10000.0 
+
         if not os.path.exists(self.filename):
             with open(self.filename, "w") as f:
                 f.write("timestamp,action,price,reason,profit_pct\n")
+
+    @property
+    def is_holding(self):
+        if self.redis:
+            val = self.redis.get("trader:is_holding")
+            return val == "1" if val else False
+        return self._is_holding
+
+    @is_holding.setter
+    def is_holding(self, value):
+        if self.redis:
+            self.redis.set("trader:is_holding", "1" if value else "0")
+        else:
+            self._is_holding = value
+
+    @property
+    def entry_price(self):
+        if self.redis:
+            val = self.redis.get("trader:entry_price")
+            return float(val) if val else 0.0
+        return self._entry_price
+
+    @entry_price.setter
+    def entry_price(self, value):
+        if self.redis:
+            self.redis.set("trader:entry_price", str(value))
+        else:
+            self._entry_price = value
 
     def check_risk_management(self, current_price):
         """
