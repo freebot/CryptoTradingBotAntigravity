@@ -1,13 +1,13 @@
 from fastapi import FastAPI
-from transformers import pipeline
 from pydantic import BaseModel
+from transformers import pipeline
 import torch
 import gc
 
 app = FastAPI()
 
-# Initialize the pipeline once
-# task="sentiment-analysis" is an alias for "text-classification"
+# Cargar el modelo de análisis de sentimiento (FinBERT)
+# Se usa pipeline para facilitar la inferencia
 analyzer = pipeline("sentiment-analysis", model="ProsusAI/finbert")
 
 class AnalyzeRequest(BaseModel):
@@ -15,20 +15,24 @@ class AnalyzeRequest(BaseModel):
 
 @app.post("/analyze")
 async def analyze(request: AnalyzeRequest):
+    """
+    Endpoint para analizar una lista de textos.
+    Retorna la clasificación de sentimiento para cada texto.
+    """
     texts = request.texts
     if not texts:
         return []
-    
-    # Run inference with memory optimizations
+
+    # Optimización de RAM: Desactivar gradientes
     with torch.no_grad():
         results = analyzer(texts)
-    
-    # Free memory immediately
+
+    # Optimización de RAM: Liberar memoria inmediatamente
     gc.collect()
-    
-    # Return raw list of [{'label': 'positive', 'score': 0.99}, ...]
+
     return results
 
 if __name__ == "__main__":
     import uvicorn
+    # Puerto 7860 requerido para Hugging Face Spaces
     uvicorn.run(app, host="0.0.0.0", port=7860)

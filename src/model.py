@@ -3,69 +3,89 @@ import os
 
 class RemoteSentimentAnalyzer:
     def __init__(self, api_url=None):
-        self.api_url = api_url or os.getenv("SENTIMENT_API_URL")
-        print(f"Initialized RemoteSentimentAnalyzer. API: {self.api_url}")
+        # Define failover URLs
+        self.default_urls = [
+            "https://fr33b0t-crypto-sentiment-api.hf.space/analyze",
+            "https://fr33b0t-crypto-tech-api.hf.space/analyze"
+        ]
+        
+        # Priority: explicit arg > env var > default list
+        env_url = os.getenv("SENTIMENT_API_URL")
+        if api_url:
+            self.urls = [api_url]
+        elif env_url:
+            self.urls = [env_url]
+        else:
+            self.urls = self.default_urls
+            
+        print(f"Initialized RemoteSentimentAnalyzer. URLs: {self.urls}")
 
     def analyze(self, text_list):
-        if not text_list or not self.api_url:
+        if not text_list:
             return "NEUTRAL", 0.0
 
-        try:
-            # The API now expects {"texts": [...]} and returns a list of dicts: [{'label':..., 'score':...}, ...]
-            response = requests.post(self.api_url, json={"texts": text_list}, timeout=10)
-            
-            if response.status_code == 200:
-                results = response.json()
+        for url in self.urls:
+            try:
+                # print(f"Querying: {url}...") 
+                response = requests.post(url, json={"texts": text_list}, timeout=10)
                 
-                # Check if results is a list (as expected from new app.py) or dict (legacy fallback)
-                if isinstance(results, dict) and "sentiment" in results:
-                    return results.get("sentiment", "NEUTRAL"), results.get("confidence", 0.0)
-                
-                # If it's a list, perform aggregation here (Client-side aggregation)
-                sentiment_score = 0
-                for res in results:
-                    # FinBERT labels: 'positive', 'negative', 'neutral'
-                    # Note: Sometimes labels might be different depending on model config, but FinBERT usually uses these.
-                    # Normalize label to lowercase just in case
-                    label = res.get('label', '').lower()
-                    score = res.get('score', 0)
+                if response.status_code == 200:
+                    results = response.json()
                     
-                    if label == 'positive':
-                        sentiment_score += score
-                    elif label == 'negative':
-                        sentiment_score -= score
+                    # Handle dict response (legacy)
+                    if isinstance(results, dict) and "sentiment" in results:
+                        return results.get("sentiment", "NEUTRAL"), results.get("confidence", 0.0)
+                    
+                    # Handle list response (raw classifications)
+                    if isinstance(results, list):
+                        sentiment_score = 0
+                        valid_results = False
+                        
+                        for res in results:
+                            label = res.get('label', '').lower()
+                            score = res.get('score', 0)
+                            
+                            if label == 'positive':
+                                sentiment_score += score
+                            elif label == 'negative':
+                                sentiment_score -= score
+                            valid_results = True
+                        
+                        if not valid_results:
+                            continue # Try next URL if response format was weird? Or just return Neutral.
+                            
+                        avg_score = sentiment_score / len(text_list) if text_list else 0
+                        
+                        if avg_score > 0.1:
+                            return "BULLISH", avg_score
+                        elif avg_score < -0.1:
+                            return "BEARISH", avg_score
+                        else:
+                            return "NEUTRAL", avg_score
                 
-                avg_score = sentiment_score / len(text_list) if text_list else 0
-                
-                if avg_score > 0.1:
-                    return "BULLISH", avg_score
-                elif avg_score < -0.1:
-                    return "BEARISH", avg_score
                 else:
-                    return "NEUTRAL", avg_score
-                    
-            else:
-                print(f"API Error {response.status_code}: {response.text}")
-                return "NEUTRAL", 0.0
-        except Exception as e:
-            print(f"API Request Failed: {e}")
-            return "NEUTRAL", 0.0
+                    print(f"API Error {response.status_code} from {url}")
+            
+            except Exception as e:
+                print(f"Connection failed to {url}: {e}")
+                continue # Try next URL
+
+        print("All Sentiment APIs failed or returned errors.")
+        return "NEUTRAL", 0.0
 
     def check_status(self):
-        """Pings the API to wake up the Hugging Face Space."""
-        if not self.api_url:
-            return False
-        try:
-            print(f"Pinging {self.api_url} to wake up Space...")
-            # Attempt a GET request to the base URL or the endpoint. 
-            # If the endpoint is /analyze (POST only), GET might return 405 but still wake it.
-            # Ideally we ping the root. Let's try to derive root or just hit the URL.
-            response = requests.get(self.api_url, timeout=30)
-            print(f"Ping response: {response.status_code}")
-            return True
-        except Exception as e:
-            print(f"Ping failed (might be starting up): {e}")
-            return False
+        """Pings the endpoints to wake them up."""
+        success = False
+        for url in self.urls:
+            try:
+                # Determine base URL for ping (strip /analyze)
+                base_url = url.replace("/analyze", "")
+                print(f"Pinging {base_url}...")
+                requests.get(base_url, timeout=5)
+                success = True
+            except Exception:
+                pass
+        return success
 
 class SentimentAnalyzer:
     def __init__(self, model_name="ProsusAI/finbert"):

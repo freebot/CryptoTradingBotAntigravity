@@ -10,7 +10,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from src.data_loader import DataLoader
-from src.model import SentimentAnalyzer, RemoteSentimentAnalyzer, PricePredictor
+from src.model import RemoteSentimentAnalyzer, PricePredictor
 from src.trader import Trader
 from src.utils import add_indicators
 from src.notion_logger import NotionLogger
@@ -62,6 +62,7 @@ def run_bot_loop():
     if analyzer is None:
         if os.getenv("SPACE_ID"):
             logging.info("Initializing Local Sentiment Analyzer (Server Mode)...")
+            from src.model import SentimentAnalyzer
             analyzer = SentimentAnalyzer()
         else:
             logging.info("Initializing Remote Sentiment Analyzer (Client Mode)...")
@@ -141,6 +142,10 @@ def main():
         # Start API Server in background thread
         server_thread = threading.Thread(target=uvicorn.run, args=(app,), kwargs={"host": "0.0.0.0", "port": 7860})
         server_thread.start()
+        
+        # Initialize SentimentAnalyzer locally for Server Mode
+        from src.model import SentimentAnalyzer
+        analyzer = SentimentAnalyzer()
         
         # Run trading bot in main thread
         run_bot_loop()
