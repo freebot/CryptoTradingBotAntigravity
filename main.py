@@ -7,123 +7,135 @@ from src.data_loader import DataLoader
 from src.model import SentimentAnalyzer, PricePredictor
 from src.trader import Trader
 from src.utils import add_indicators
-from src.notion_logger import NotionLogger  # <--- Nueva integración
+from src.notion_logger import NotionLogger
 
-# Configuración de Logging
-logging.basicConfig(level=logging.INFO)
+# Configuración de Logging profesional
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# Cargar configuración
+# Cargar configuración o usar valores por defecto
 try:
     with open('config/settings.json', 'r') as f:
         settings = json.load(f)
 except FileNotFoundError:
     settings = {"symbol": "bitcoin", "timeframe": "1h"}
 
-# Para CoinGecko usamos IDs como 'bitcoin' o 'ethereum'
 SYMBOL = settings.get("symbol", "bitcoin")
 TIMEFRAME = settings.get("timeframe", "1h")
 
 def main():
-    print("🚀 Starting Antigravity Crypto Bot (Virtual Edition)...")
+    print("\n" + "="*50)
+    print("🚀 ANTIGRAVITY CRYPTO BOT - MODO VIRTUAL PRO")
+    print("="*50 + "\n")
     
-    # --- INICIALIZACIÓN DE COMPONENTES ---
+    # --- 1. INICIALIZACIÓN DE COMPONENTES ---
     data_loader = DataLoader()
     sentiment_model = SentimentAnalyzer()
     price_predictor = PricePredictor()
     trader = Trader(SYMBOL)
-    notion = NotionLogger() # <--- Logger de Notion
+    notion = NotionLogger()
 
-    # --- SIMULACIÓN DE CARTERA ---
-    # En un bot real, esto se leería del exchange. 
-    # Aquí lo iniciamos para medir el aprendizaje.
-    balance_inicial = 10000.0  # $10,000 USD ficticios
-    # Intentamos cargar el balance actual si existe un archivo local, si no, el inicial
-    balance_actual = balance_inicial 
+    # Variables para seguimiento de sesión
+    balance_inicial = 10000.0 
+    print(f"📡 Monitoreando: {SYMBOL.upper()}")
+    print(f"📊 Dashboard Notion: CONECTADO")
+    print(f"🛡️ Configuración: SL 2% | TP 5%")
 
-    print(f"Tracking {SYMBOL} on {TIMEFRAME} timeframe.")
-    print(f"Notion Dashboard: Conectado.")
-
-    # Fuente de noticias para análisis de sentimiento (Demo)
-    # En el futuro, Antigravity puede ayudarte a conectar NewsAPI aquí
+    # Noticias de ejemplo (Simulación hasta conectar NewsAPI)
     fake_news = [
-        "Bitcoin adoption grows as major banks open crypto desks.",
-        "Market experiences volatility amid global economic shifts.",
-        "New institutional interest drives crypto markets higher.",
-        "Regulatory updates create temporary uncertainty in trading.",
-        "Technological breakthroughs improve blockchain scalability."
+        "Bitcoin price stabilizes as institutional investors accumulate.",
+        "New crypto regulations could impact market liquidity negatively.",
+        "Major retailer announces it will accept Bitcoin payments soon.",
+        "Technical breakdown suggests a short-term bearish trend for BTC.",
+        "Global markets rally, pushing crypto assets to new monthly highs."
     ]
 
     try:
         while True:
-            print("\n--- New Cycle ---")
+            print(f"\n--- Ciclo de Mercado: {time.strftime('%H:%M:%S')} ---")
             
-            # 1. OBTENCIÓN DE DATOS (CoinGecko)
+            # --- 2. OBTENCIÓN DE DATOS ---
             df = data_loader.fetch_ohlcv(SYMBOL, TIMEFRAME)
             
             if df is None or df.empty:
-                print("⚠️ No se recibieron datos de mercado. Reintentando...")
+                print("⚠️ Error de datos (CoinGecko). Reintentando en 60s...")
                 if os.getenv("RUN_ONCE") == "true": break
                 time.sleep(60)
                 continue
             
-            # 2. ANÁLISIS TÉCNICO
+            # --- 3. ANÁLISIS TÉCNICO Y PRECIO ---
             df = add_indicators(df, settings)
             current_price = float(df['close'].iloc[-1])
-            print(f"💰 Precio Actual ({SYMBOL}): ${current_price:,.2f}")
-            
-            technical_signal = price_predictor.predict_next_move(df)
-            print(f"📊 Señal Técnica: {technical_signal}")
-            
-            # 3. ANÁLISIS DE IA (Hugging Face - FinBERT)
-            current_news = random.sample(fake_news, 1)
-            sentiment, score = sentiment_model.analyze(current_news)
-            print(f"🧠 IA Sentiment: {sentiment} (Confianza: {score:.2f})")
-            
-            # 4. LÓGICA DE DECISIÓN
-            action = "HOLD"
-            if technical_signal == "UP" and sentiment == "BULLISH":
-                action = "BUY"
-            elif technical_signal == "DOWN" and sentiment == "BEARISH":
-                action = "SELL"
-            
-            print(f"🎯 Decisión final: {action}")
-            
-            # 5. EJECUCIÓN VIRTUAL Y NOTION
-            # Calculamos un profit simulado muy básico para el dashboard
-            # (En BUY el balance baja, en SELL sube, aquí lo simplificamos a % de cambio)
-            profit_simulado = balance_actual - balance_inicial
+            print(f"💰 Precio Actual: ${current_price:,.2f}")
 
-            if action != "HOLD":
-                # Ejecutamos en nuestro trader virtual (guarda en CSV local)
-                trader.place_order(action.lower(), 0.01, current_price)
+            # --- 4. GESTIÓN DE RIESGO (Prioridad 1) ---
+            # Si ya tenemos una posición abierta, revisamos si toca vender por SL o TP
+            risk_event, pnl_pct = trader.check_risk_management(current_price)
+            
+            if risk_event:
+                print(f"🚨 {risk_event} DISPARADO! Cerrando posición...")
+                trader.place_order("sell", 0.01, current_price, reason=risk_event)
                 
-                # Actualizamos Notion
-                # Esta es la parte que alimenta tu pantalla de Notion
+                # Actualizar Notion con el cierre por riesgo
                 notion.log_trade(
-                    action=action,
+                    action=risk_event,
                     price=current_price,
-                    sentiment=sentiment,
-                    confidence=score,
-                    profit=profit_simulado
+                    sentiment="NEUTRAL",
+                    confidence=1.0,
+                    profit=pnl_pct
                 )
+                final_action = risk_event
+            
             else:
-                # Opcional: También puedes loguear los "HOLD" en Notion cada X tiempo
-                print("☕ Manteniendo posición. No se enviaron datos a Notion.")
+                # --- 5. ANÁLISIS DE IA Y SEÑALES (Prioridad 2) ---
+                # Solo buscamos nuevas señales si NO se disparó el riesgo
+                technical_signal = price_predictor.predict_next_move(df)
+                
+                # Analizar sentimiento con FinBERT
+                news_item = random.sample(fake_news, 1)
+                sentiment, confidence = sentiment_model.analyze(news_item)
+                
+                print(f"📊 Señal Técnica: {technical_signal} | 🧠 IA: {sentiment} ({confidence:.2f})")
 
-            # --- CONTROL DE EJECUCIÓN (GitHub Actions / Cloud) ---
+                final_action = "HOLD"
+
+                # Lógica de Ejecución
+                if technical_signal == "UP" and sentiment == "BULLISH":
+                    if not trader.is_holding:
+                        final_action = "BUY"
+                        if trader.place_order("buy", 0.01, current_price, reason="AI_SIGNAL"):
+                            notion.log_trade("BUY", current_price, sentiment, confidence, 0)
+                    else:
+                        print("⏳ Señal de compra recibida, pero ya tienes una posición abierta.")
+
+                elif technical_signal == "DOWN" and sentiment == "BEARISH":
+                    if trader.is_holding:
+                        final_action = "SELL"
+                        if trader.place_order("sell", 0.01, current_price, reason="AI_SIGNAL"):
+                            # pnl_pct se calcula dentro del trader al vender
+                            notion.log_trade("SELL", current_price, sentiment, confidence, pnl_pct)
+                    else:
+                        print("⏳ Señal de venta recibida, pero no tienes activos para vender.")
+
+                if final_action == "HOLD":
+                    print("☕ Sin cambios. El bot sigue buscando oportunidades...")
+
+            # --- 6. FINALIZACIÓN DE CICLO ---
             if os.getenv("RUN_ONCE") == "true":
-                print("\n✅ Ciclo único completado con éxito.")
+                print("\n✅ Ejecución única de GitHub Actions finalizada.")
                 break
 
-            print("⏳ Esperando siguiente ciclo (60s)...")
+            print("😴 Durmiendo 60 segundos...")
             time.sleep(60)
             
     except Exception as e:
-        print(f"❌ Error Crítico: {e}")
-        # Intentar reportar el error a Notion antes de morir
+        logger.error(f"❌ Error Crítico en el bucle principal: {e}")
+        # Notificar error a Notion si es posible
         try:
-            notion.log_trade("ERROR", 0, str(e)[:20], 0, 0)
+            notion.log_trade("ERROR", 0, "SYSTEM_CRASH", 0, 0)
         except:
             pass
 
