@@ -14,7 +14,7 @@ jobs:
 
       - name: Wake up Brain
         run: |
-          curl -sL https://huggingface.co/spaces/fr33b0t/crypto-bot > /dev/null
+          curl -sL https://fr33b0t-crypto-bot.hf.space > /dev/null
           echo "Waking up Space... Waiting 30s for model load..."
           sleep 30
 

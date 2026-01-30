@@ -11,14 +11,43 @@ class RemoteSentimentAnalyzer:
             return "NEUTRAL", 0.0
 
         try:
-            # We assume the endpoint is /analyze as configured previously
+            # The API now expects {"texts": [...]} and returns a list of dicts: [{'label':..., 'score':...}, ...]
             response = requests.post(self.api_url, json={"texts": text_list}, timeout=10)
+            
             if response.status_code == 200:
-                data = response.json()
-                return data.get("sentiment", "NEUTRAL"), data.get("confidence", 0.0)
+                results = response.json()
+                
+                # Check if results is a list (as expected from new app.py) or dict (legacy fallback)
+                if isinstance(results, dict) and "sentiment" in results:
+                    return results.get("sentiment", "NEUTRAL"), results.get("confidence", 0.0)
+                
+                # If it's a list, perform aggregation here (Client-side aggregation)
+                sentiment_score = 0
+                for res in results:
+                    # FinBERT labels: 'positive', 'negative', 'neutral'
+                    # Note: Sometimes labels might be different depending on model config, but FinBERT usually uses these.
+                    # Normalize label to lowercase just in case
+                    label = res.get('label', '').lower()
+                    score = res.get('score', 0)
+                    
+                    if label == 'positive':
+                        sentiment_score += score
+                    elif label == 'negative':
+                        sentiment_score -= score
+                
+                avg_score = sentiment_score / len(text_list) if text_list else 0
+                
+                if avg_score > 0.1:
+                    return "BULLISH", avg_score
+                elif avg_score < -0.1:
+                    return "BEARISH", avg_score
+                else:
+                    return "NEUTRAL", avg_score
+                    
             else:
                 print(f"API Error {response.status_code}: {response.text}")
                 return "NEUTRAL", 0.0
+        except Exception as e:
             print(f"API Request Failed: {e}")
             return "NEUTRAL", 0.0
 
