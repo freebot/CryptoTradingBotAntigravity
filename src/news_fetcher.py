@@ -1,59 +1,36 @@
 import requests
 import xml.etree.ElementTree as ET
-import logging
 import random
-import time
+import logging
 
 logger = logging.getLogger(__name__)
 
 class NewsFetcher:
     def __init__(self):
-        # Lista de fuentes RSS gratuitas y públicas
-        self.rss_sources = [
+        self.sources = [
             "https://cointelegraph.com/rss",
             "https://cryptopotato.com/feed/",
             "https://beincrypto.com/feed/"
         ]
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Cache-Control': 'max-age=0',
+        }
 
     def get_latest_news(self, limit=5):
-        """
-        Descarga noticias reales desde feeds RSS públicos.
-        No requiere API Keys ni suscripciones.
-        """
-        news_items = []
-        
-        # Seleccionamos una fuente aleatoria para variar (y evitar bloqueo por spam requests)
-        source = random.choice(self.rss_sources)
-        
-        try:
-            logger.info(f"📰 Descargando noticias de: {source}")
-            response = requests.get(source, timeout=10)
-            response.raise_for_status()
-            
-            # Parsear XML (RSS standard)
-            root = ET.fromstring(response.content)
-            
-            # Iterar sobre los items del RSS
-            count = 0
-            for item in root.findall('.//item'):
-                if count >= limit:
-                    break
-                    
-                title = item.find('title').text
-                # A veces la descripción tiene HTML, podríamos limpiarlo pero para NLP 
-                # suele estar bien tener más contexto o solo el título.
-                # Por simplicidad y eficiencia del modelo, usaremos Titulo.
-                
-                if title:
-                    news_items.append(title)
-                    count += 1
-            
-            return news_items
-
-        except Exception as e:
-            logger.error(f"⚠️ Error descargando noticias RSS: {e}")
-            # Fallback en caso de error de red (evita crash)
-            return [
-                "Bitcoin price maintains stability amidst global market uncertainty.",
-                "Crypto market volatility increases as traders watch key support levels."
-            ]
+        random.shuffle(self.sources)
+        for source in self.sources:
+            try:
+                res = requests.get(source, headers=self.headers, timeout=10)
+                root = ET.fromstring(res.content)
+                news = [item.find('title').text for item in root.findall('.//item')[:limit]]
+                if news: return news
+            except Exception as e:
+                print(f"Error fetching from {source}: {e}")
+                continue
+        return ["Bitcoin market remains stable.", "Crypto adoption continues."]
