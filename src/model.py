@@ -1,5 +1,7 @@
 import requests
 import os
+import gc
+import torch
 
 class RemoteSentimentAnalyzer:
     def __init__(self, api_url=None):
@@ -29,6 +31,8 @@ class SentimentAnalyzer:
         try:
             from transformers import pipeline
             self.pipe = pipeline("text-classification", model=model_name, tokenizer=model_name)
+            self.pipe.model.eval()  # Ensure model is in eval mode
+            gc.collect()  # Free up memory
         except Exception as e:
             print(f"Error loading model: {e}")
             self.pipe = None
@@ -37,7 +41,8 @@ class SentimentAnalyzer:
         if not self.pipe:
             return "NEUTRAL", 0.0
         
-        results = self.pipe(text_list)
+        with torch.no_grad():
+            results = self.pipe(text_list)
         # Simple aggregation logic
         sentiment_score = 0
         for res in results:

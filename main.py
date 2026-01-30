@@ -1,5 +1,8 @@
 import os
 import time
+
+# Ensure logs are not buffered
+os.environ["PYTHONUNBUFFERED"] = "1"
 import json
 import logging
 import threading
@@ -45,6 +48,9 @@ def run_bot_loop():
     global analyzer
     logging.info("Starting Trading Bot Loop...")
     
+    # Wait 10 seconds to allow server to start and system to settle
+    time.sleep(10)
+    
     with open('config/settings.json') as f:
         settings = json.load(f)
 
@@ -53,11 +59,13 @@ def run_bot_loop():
     trader.stop_loss_pct = settings['stop_loss_pct']
     trader.take_profit_pct = settings['take_profit_pct']
     
-    # Analyzer should be initialized by main() before calling this, 
-    # but as a fallback/safety check:
     if analyzer is None:
-        logging.warning("Analyzer was not initialized in main. Initializing default Remote...")
-        analyzer = RemoteSentimentAnalyzer()
+        if os.getenv("SPACE_ID"):
+            logging.info("Initializing Local Sentiment Analyzer (Server Mode)...")
+            analyzer = SentimentAnalyzer()
+        else:
+            logging.info("Initializing Remote Sentiment Analyzer (Client Mode)...")
+            analyzer = RemoteSentimentAnalyzer()
 
     predictor = PricePredictor()
     notion = NotionLogger()
@@ -121,23 +129,20 @@ def main():
     if os.getenv("SPACE_ID"):
         # Server Mode (Hugging Face Space)
         logging.info("🚀 Starting in SERVER MODE (Hugging Face Space)")
-        # Load the heavy model locally
-        analyzer = SentimentAnalyzer() 
         
-        # Start trading bot in background thread
-        bot_thread = threading.Thread(target=run_bot_loop, daemon=True)
-        bot_thread.start()
+        # Start API Server in background thread
+        server_thread = threading.Thread(target=uvicorn.run, args=(app,), kwargs={"host": "0.0.0.0", "port": 7860})
+        server_thread.start()
         
-        # Start API Server (blocking)
-        uvicorn.run(app, host="0.0.0.0", port=7860)
+        # Run trading bot in main thread
+        run_bot_loop()
         
     else:
         # Client Mode (GitHub Actions / Local)
         logging.info("🌍 Starting in CLIENT MODE")
-        # Use remote API
-        analyzer = RemoteSentimentAnalyzer() 
         
         # Run trading bot directly (blocking)
+        # Analyzer will be initialized as Remote in run_bot_loop
         run_bot_loop()
 
 if __name__ == "__main__":
