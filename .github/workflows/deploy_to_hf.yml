@@ -19,11 +19,31 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # Enviar al Cerebro 1 (Sentimiento)
+          git config --global user.email "bot@antigravity.io"
+          git config --global user.name "Antigravity Deployer"
+          
+          # 1. Configurar y Enviar Cerebro de Sentimiento (API)
+          sed -i 's/^title:.*/title: Crypto Sentiment Brain/' README.md
+          sed -i 's/^sdk:.*/sdk: docker/' README.md
+          sed -i 's/^app_file:.*/app_file: sentiment_brain.py/' README.md
+          git add README.md
+          git commit -m "Deploy Sentiment Brain"
           git push --force https://fr33b0t:$HF_TOKEN@huggingface.co/spaces/fr33b0t/crypto-sentiment-api main
+          git reset --hard HEAD~1
           
-          # Enviar al Cerebro 2 (Técnico / Backup)
+          # 2. Configurar y Enviar Cerebro Técnico (API)
+          sed -i 's/^title:.*/title: Crypto Tech Brain/' README.md
+          sed -i 's/^sdk:.*/sdk: docker/' README.md
+          sed -i 's/^app_file:.*/app_file: tech_brain.py/' README.md
+          git add README.md
+          git commit -m "Deploy Tech Brain"
           git push --force https://fr33b0t:$HF_TOKEN@huggingface.co/spaces/fr33b0t/crypto-tech-api main
+          git reset --hard HEAD~1
           
-          # Enviar al Dashboard (Visualización)
+          # 3. Configurar y Enviar Dashboard (Streamlit)
+          sed -i 's/^title:.*/title: Antigravity Terminal/' README.md
+          sed -i 's/^sdk:.*/sdk: streamlit/' README.md
+          sed -i 's/^app_file:.*/app_file: app.py/' README.md
+          git add README.md
+          git commit -m "Deploy Dashboard"
           git push --force https://fr33b0t:$HF_TOKEN@huggingface.co/spaces/fr33b0t/crypto-bot main
