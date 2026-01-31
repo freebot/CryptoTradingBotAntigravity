@@ -18,7 +18,7 @@ class SupabaseLogger:
                 logging.error(f"❌ Failed to connect to Supabase: {e}")
                 self.supabase = None
 
-    def log_trade(self, action: str, price: float, sentiment: str, confidence: float, pnl: float = 0.0):
+    def log_to_supabase(self, action: str, price: float, sentiment: str, confidence: float, pnl: float = 0.0):
         """
         Logs a trade or action to the 'trading_logs' table in Supabase.
         """

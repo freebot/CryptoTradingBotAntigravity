@@ -73,7 +73,6 @@ def run_bot_loop():
             analyzer.check_status()
 
     predictor = PricePredictor()
-    predictor = PricePredictor()
     notion = NotionLogger()
     supabase = SupabaseLogger()
     telegram = TelegramLogger()
@@ -90,9 +89,7 @@ def run_bot_loop():
             if df.empty: 
                 time.sleep(60); continue
             
-            current_price = float(df['close'].iloc[-1])
-            df = add_indicators(df, settings)
-
+            # Prepare Data
             current_price = float(df['close'].iloc[-1])
             df = add_indicators(df, settings)
 
@@ -120,7 +117,7 @@ def run_bot_loop():
                 # Log risk event with current sentiment
                 try:
                     notion.log_trade(event, current_price, cached_sent, cached_conf, pnl)
-                    supabase.log_trade(event, current_price, cached_sent, cached_conf, pnl)
+                    supabase.log_to_supabase(event, current_price, cached_sent, cached_conf, pnl)
                 except Exception as log_err:
                     telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
 
@@ -133,7 +130,7 @@ def run_bot_loop():
                     action_taken = "BUY"
                     try:
                         notion.log_trade("BUY", current_price, cached_sent, cached_conf, 0)
-                        supabase.log_trade("BUY", current_price, cached_sent, cached_conf, 0)
+                        supabase.log_to_supabase("BUY", current_price, cached_sent, cached_conf, 0)
                     except Exception as log_err:
                          telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
                 
@@ -142,7 +139,7 @@ def run_bot_loop():
                     action_taken = "SELL"
                     try:
                         notion.log_trade("SELL", current_price, cached_sent, cached_conf, pnl)
-                        supabase.log_trade("SELL", current_price, cached_sent, cached_conf, pnl)
+                        supabase.log_to_supabase("SELL", current_price, cached_sent, cached_conf, pnl)
                     except Exception as log_err:
                          telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
             
@@ -151,14 +148,16 @@ def run_bot_loop():
                 telegram.report_cycle(action_taken, current_price, cached_sent)
             else:
                 telegram.report_cycle("HOLD", current_price, cached_sent)
+                # Log HOLD status to Supabase as requested
+                try:
+                    supabase.log_to_supabase("HOLD", current_price, cached_sent, cached_conf, pnl)
+                except Exception as log_err:
+                    logging.error(f"Logging Error: {log_err}")
 
         except Exception as e:
             error_msg = f"Error in bot loop: {e}"
             logging.error(error_msg)
             telegram.report_cycle("ERROR", error=error_msg)
-
-        except Exception as e:
-            logging.error(f"Error in bot loop: {e}")
 
         if os.getenv("RUN_ONCE") == "true": 
             logging.info("RUN_ONCE is true, exiting bot loop.")
