@@ -1,134 +1,90 @@
-🚀 Project Antigravity: Intelligent ML Trading Bot
+---
+title: Antigravity Trading Ecosystem 📈
+emoji: 🚀
+colorFrom: blue
+colorTo: purple
+sdk: streamlit
+sdk_version: 1.35.0
+app_file: app.py
+pinned: false
+---
 
-Este es un ecosistema de trading algorítmico diseñado no solo para operar, sino para evolucionar. El proyecto utiliza Machine Learning (NLP) para entender el sentimiento del mercado y Gestión de Riesgos Cuantitativa para proteger el capital.
+# 🚀 Project Antigravity: Distributed ML Trading Ecosystem
 
-Desarrollado con Antigravity, este bot representa el ciclo completo de un ingeniero de software financiero: desde la simulación en la nube hasta el monitoreo profesional en Notion.
-📊 Dashboard de Control (Notion)
+Este proyecto ha evolucionado de un simple script a un **ecosistema de trading distribuido**. Utiliza una arquitectura de **Microservicios** para maximizar los recursos gratuitos de la nube, separando la carga pesada de Inteligencia Artificial (Cerebro) de la ejecución lógica y gestión de órdenes (Músculo).
 
-A diferencia de otros bots, Project Antigravity no solo escupe texto en una consola. Hemos integrado una "Pantalla de Comando" en Notion donde puedes ver en tiempo real desde cualquier dispositivo:
+Desarrollado con **Antigravity**, el bot integra análisis de sentimiento en tiempo real, indicadores técnicos avanzados y una infraestructura de grado profesional.
 
-    Avance del ML: Sentimiento detectado y nivel de confianza de la IA.
+## 🏗️ Arquitectura de Microservicios: "Brain & Muscle"
 
-    Estado de Cuenta: Ganancias y pérdidas (PnL) acumuladas.
+Para optimizar los límites de 2GB de RAM de Hugging Face y los tiempos de ejecución de GitHub Actions, el sistema se divide en:
 
-    Bitácora de Decisiones: Por qué el bot decidió comprar, vender o ejecutar un Stop Loss.
+### 1. 🧠 Los Cerebros (Hugging Face Spaces)
+Servidores dedicados que permanecen encendidos o se "despiertan" bajo demanda:
+- **Crypto Sentiment API**: Servidor FastAPI que mantiene cargado el modelo `FinBERT`. Procesa noticias de Reddit y RSS sin que el cliente tenga que cargar pesadas librerías de IA.
+- **Crypto Tech API**: Servidor de respaldo para procesamiento matemático y redundancia.
+- **Crypto Bot Dashboard**: La cara pública del proyecto. Una interfaz en **Streamlit** que visualiza datos en tiempo real desde Supabase.
 
-🏗️ Arquitectura Híbrida: Client-Server
+### 2. ⚡ El Agente / Músculo (GitHub Actions)
+El ejecutor que despierta cada hora (Cron Job) para realizar el ciclo de trading:
+- **Tecnología**: Python ligero (Requests + Pandas).
+- **Eficiencia**: Consulta a los "Cerebros" vía API, reduciendo el tiempo de ejecución de minutos a segundos.
+- **Memoria de Corto Plazo**: Utiliza **Upstash Redis** para recordar el estado de las órdenes entre ejecuciones (Persistencia de `is_holding` y `entry_price`).
 
-El sistema ha evolucionado a una arquitectura distribuida inteligente para optimizar recursos:
-1. 🧠 Los Cerebros (Hugging Face Spaces Distribuidos)
+### 3. 🗄️ El Almacén (Supabase & Notion)
+- **Notion**: Dashboard operativo para humanos. Registro de decisiones y sentimiento.
+- **Supabase (PostgreSQL)**: Base de datos histórica para almacenar logs de mercado y alimentar el Dashboard de Streamlit.
 
-El sistema utiliza una arquitectura de microservicios:
+---
 
-    Crypto Sentiment API: Servidor FastAPI dedicado a IA (FinBERT) para análisis de noticias.
+## 🧠 Estrategia de Inversión: Confirmación Dual
 
-    Crypto Tech API: Servidor FastAPI para análisis técnico y backup.
+El bot no opera por intuición, sino por **convergencia de datos**:
+1.  **Análisis de Sentimiento**: Escanea `r/Bitcoin`, `r/CryptoCurrency` y `r/Ethereum`. Solo permite compras si la IA detecta un sentimiento **BULLISH** con confianza > 0.80.
+2.  **Filtro Técnico**: Valida tendencias mediante RSI y Medias Móviles para evitar comprar en techos de mercado.
+3.  **🛡️ Gestión de Riesgos (Prioridad Alpha)**:
+    - **Stop Loss (2%)**: Protección matemática ante caídas repentinas.
+    - **Take Profit (5%)**: Captura de ganancias automatizada.
+    - **Persistencia con Redis**: El bot "sabe" que tiene una posición abierta aunque el script se haya cerrado.
 
-    Crypto Bot Dashboard: Panel de visualización en Streamlit para monitoreo humano.
+---
 
-2. ⚡ El Agente (GitHub Actions / Local)
+## 📈 Plan de Evolución
 
-Actúa como Cliente Ligero.
+### Fase 1: Cimientos Distribuidos (Actual)
+- Despliegue de APIs en Hugging Face.
+- Integración de Memoria Persistente con Upstash Redis.
+- Monitoreo en Notion.
 
-    Tecnología: Python plano (sin PyTorch).
+### Fase 2: Visualización y Alertas (En curso)
+- **Dashboard en Streamlit**: Sustitución de logs por gráficas interactivas.
+- **Telegram Bot**: Notificaciones "Push" al móvil y comandos de consulta `/status`.
+- **Supabase Integration**: Histórico de datos para análisis de rendimiento.
 
-    Eficiencia: En lugar de descargar modelos pesados, utiliza RemoteSentimentAnalyzer para consultar a los Cerebros vía API.
+### Fase 3: Operación Real
+- Migración a ejecución local (Raspberry Pi/Home Server) para evitar bloqueos de IP de los Exchanges.
+- Implementación de **Trailing Stop Loss**.
+- Gestión de órdenes reales con capital controlado ($20 USD).
 
-    Ventaja: Ejecución ultra-rápida (segundos vs minutos) y mínimo consumo de recursos en CI/CD.
+---
 
-code
-Text
+## 🚀 Guía de Configuración
 
-antigravity-trade-bot/
-├── .github/workflows/      # Orquestación: Despierta al cerebro antes de operar
-├── src/
-│   ├── app.py              # Dashboard (Streamlit)
-│   ├── sentiment_brain.py  # API de Sentimiento (FastAPI)
-│   ├── tech_brain.py       # API Técnica (FastAPI)
-│   ├── main.py             # Agente de Trading
-│   └── ...
+### Variables de Entorno (GitHub Secrets)
+Para que el ecosistema funcione, configura los siguientes Secrets en tu repositorio:
 
-🧠 Inteligencia y Estrategia
+| Secreto | Función |
+| :--- | :--- |
+| `HF_TOKEN` | Permiso para actualizar Spaces y despertar la API. |
+| `NOTION_TOKEN` / `NOTION_DATABASE_ID` | Conexión con el Dashboard de Notion. |
+| `UPSTASH_REDIS_REST_URL` / `TOKEN` | Memoria de corto plazo del bot. |
+| `SUPABASE_URL` / `SUPABASE_KEY` | Almacenamiento histórico de trades. |
+| `TELEGRAM_BOT_TOKEN` / `CHAT_ID` | Alertas en tiempo real al móvil. |
 
-El bot opera bajo una lógica de Confirmación Dual:
-code
-Code
+---
 
-Análisis de Sentimiento: Utiliza FinBERT de Hugging Face para procesar noticias. Solo compra si el sentimiento es marcadamente "Bullish" (>0.80).
+## ⚠️ Descargo de Responsabilidad (Disclaimer)
+Este proyecto es estrictamente **educativo**. El trading de criptomonedas conlleva riesgos financieros significativos. La lógica de Machine Learning puede fallar. **Nunca** operes con dinero que no puedas permitirte perder.
 
-Filtro Técnico: Utiliza indicadores (RSI, Medias Móviles) para confirmar que el precio no está sobrecomprado.
-
-🛡️ Risk Management (Nivel Pro):
-
-    Stop Loss (2%): Si el mercado se vuelve en contra, el bot corta la pérdida inmediatamente.
-
-    Take Profit (5%): El bot asegura ganancias automáticamente al alcanzar el objetivo.
-
-📈 Plan de Evolución: De "Estudiante" a "Pro"
-
-Para ganar dinero real, el bot seguirá esta hoja de ruta de crecimiento:
-Fase 1: Simulación y Nube (Estado Actual)
-code
-Code
-
-Objetivo: Validar la estrategia sin riesgo.
-
-Entorno: GitHub Actions / Hugging Face Spaces.
-
-Datos: CoinGecko API (Evita bloqueos de IP).
-
-Ejecución: Virtual Paper Trading.
-
-Fase 2: Inteligencia Aumentada (Próximamente)
-code
-Code
-
-Mejora: Conexión con NewsAPI para leer noticias reales en tiempo real.
-
-Eficiencia: Implementación de Trailing Stop Loss (el stop persigue el precio para maximizar ganancias).
-
-Análisis: Registro automático de errores y "alucinaciones" de la IA en Notion.
-
-Fase 3: Operación Local (Salto a Real)
-code
-Code
-
-Objetivo: Evitar bloqueos de IP de Exchanges (Binance/Bybit).
-
-Entorno: Ejecución en servidor local (Raspberry Pi o Laptop 24/7).
-
-Capital: Inyección de $20 USD reales para probar ejecución, comisiones (fees) y latencia.
-
-Fase 4: Escalabilidad Cuantitativa
-code
-Code
-
-Optimización: Ajuste automático de parámetros basado en el Ratio de Sharpe.
-
-Diversificación: Operación multi-moneda (BTC, ETH, SOL) simultánea.
-
-Independencia: Migración a modelos de ML propios ajustados a cripto.
-
-🚀 Guía de Configuración Rápida
-
-    Variables de Entorno (Secrets)
-
-Configura los siguientes secretos en tu repositorio de GitHub:
-code
-Code
-
-HF_TOKEN: Tu token de Hugging Face.
-
-NOTION_TOKEN: Token de integración de Notion.
-
-NOTION_DATABASE_ID: ID de tu base de datos en Notion.
-
-    Conectar Notion
-
-    Crea una base de datos en Notion con columnas: Fecha, Accion, Precio, Sentimiento, Confianza ML, Profit Acumulado.
-
-    Agrega la conexión de tu integración de Notion a la página.
-
-⚠️ Descargo de Responsabilidad
-
-Este proyecto tiene fines exclusivamente educativos. El trading de criptomonedas implica un riesgo de pérdida total del capital. El autor no se hace responsable por pérdidas financieras derivadas del uso de este código. La fase 1 es puramente virtual."
+---
+*Powered by Antigravity, Hugging Face and the Open Source Community.*
