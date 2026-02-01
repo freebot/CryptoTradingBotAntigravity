@@ -5,6 +5,7 @@ import os
 import datetime
 import pandas as pd
 from upstash_redis import Redis
+import ccxt
 
 class Trader:
     def __init__(self, symbol, stop_loss_pct=0.02, take_profit_pct=0.05):
@@ -28,6 +29,24 @@ class Trader:
         # --- Parámetros de Riesgo (Configurables) ---
         self.stop_loss_pct = stop_loss_pct
         self.take_profit_pct = take_profit_pct
+        
+        # --- Configuración Exchange (Bybit) ---
+        api_key = os.getenv("BYBIT_API_KEY")
+        secret = os.getenv("BYBIT_SECRET_KEY")
+        
+        self.exchange = None
+        if api_key and secret:
+            try:
+                self.exchange = ccxt.bybit({
+                    'apiKey': api_key,
+                    'secret': secret,
+                })
+                self.exchange.set_sandbox_mode(True)  # MODO DE PRUEBA
+                print("✅ Connected to Bybit (Sandbox Mode)")
+            except Exception as e:
+                print(f"⚠️ Failed to connect to Bybit: {e}")
+        else:
+             print("⚠️ Bybit credentials missing. Running in Simulation Mode.")
         
         # --- Estado Inicial (Solo si no existe en Redis) ---
         if self.redis:
@@ -95,28 +114,77 @@ class Trader:
         return None, change_pct * 100
 
     def place_order(self, side, amount, price, reason="AI_Signal"):
-        """Simula una orden de compra o venta y la registra"""
+        """Ejecuta una orden de mercado en Bybit y actualiza el estado"""
         timestamp = datetime.datetime.now().isoformat()
         profit_pct = 0.0
-
-        if side == "buy" and not self.is_holding:
-            self.is_holding = True
-            self.entry_price = price
-            print(f"🔵 COMPRA VIRTUAL: {self.symbol} a ${price:,.2f} | Razón: {reason}")
-            self._save_to_csv(timestamp, "BUY", price, reason, 0.0)
-            return True
-
-        elif side == "sell" and self.is_holding:
-            profit_pct = ((price - self.entry_price) / self.entry_price) * 100
-            self.virtual_balance += (self.virtual_balance * (profit_pct / 100))
-            
-            print(f"🔴 VENTA VIRTUAL: {self.symbol} a ${price:,.2f} | PNL: {profit_pct:.2f}% | Razón: {reason}")
-            
-            self.is_holding = False
-            self.entry_price = 0.0
-            self._save_to_csv(timestamp, "SELL", price, reason, profit_pct)
-            return True
         
+        # Simulación si no hay exchange configurado
+        if not self.exchange:
+            if side == "buy" and not self.is_holding:
+                self.is_holding = True
+                self.entry_price = price
+                print(f"🔵 COMPRA VIRTUAL: {self.symbol} a ${price:,.2f} | Razón: {reason}")
+                self._save_to_csv(timestamp, "BUY", price, reason, 0.0)
+                return True
+            elif side == "sell" and self.is_holding:
+                profit_pct = ((price - self.entry_price) / self.entry_price) * 100
+                self.virtual_balance += (self.virtual_balance * (profit_pct / 100))
+                print(f"🔴 VENTA VIRTUAL: {self.symbol} a ${price:,.2f} | PNL: {profit_pct:.2f}% | Razón: {reason}")
+                self.is_holding = False
+                self.entry_price = 0.0
+                self._save_to_csv(timestamp, "SELL", price, reason, profit_pct)
+                return True
+            return False
+
+        # Ejecución Real (Sandbox)
+        try:
+            if side == "buy" and not self.is_holding:
+                # amount es la cantidad de cripto, pero para facilitar usaremos costo en USDT si es posible
+                # o asumimos que 'amount' viene calculado correctamente.
+                # Para simplificar, compraremos fixed amount o calcularemos based on balance.
+                # Aquí asumimos que 'amount' es la cantidad de tokens a comprar.
+                
+                # Nota: En un entorno real, deberíamos chequear balance primero.
+                order = self.exchange.create_market_buy_order(self.symbol, amount)
+                
+                fill_price = order['price'] if order.get('price') else price # Fallback if None
+                if not fill_price or fill_price == 0.0:
+                     # Intentar sacar precio de trades si disponible
+                     if 'trades' in order and len(order['trades']) > 0:
+                         fill_price = order['trades'][0]['price']
+                     else:
+                         fill_price = price # Last resort fallback
+                
+                self.is_holding = True
+                self.entry_price = float(fill_price)
+                
+                print(f"🔵 BYBIT BUY: {self.symbol} a ${fill_price:,.2f} | ID: {order['id']}")
+                self._save_to_csv(timestamp, "BUY", fill_price, reason, 0.0)
+                return True
+
+            elif side == "sell" and self.is_holding:
+                order = self.exchange.create_market_sell_order(self.symbol, amount)
+                
+                fill_price = order['price'] if order.get('price') else price
+                if not fill_price or fill_price == 0.0:
+                     if 'trades' in order and len(order['trades']) > 0:
+                         fill_price = order['trades'][0]['price']
+                     else:
+                         fill_price = price
+
+                profit_pct = ((float(fill_price) - self.entry_price) / self.entry_price) * 100
+                
+                print(f"🔴 BYBIT SELL: {self.symbol} a ${fill_price:,.2f} | PNL: {profit_pct:.2f}%")
+                
+                self.is_holding = False
+                self.entry_price = 0.0
+                self._save_to_csv(timestamp, "SELL", fill_price, reason, profit_pct)
+                return True
+                
+        except Exception as e:
+            print(f"❌ Error executing order on Bybit: {e}")
+            return False
+            
         return False
 
     def get_balance(self):

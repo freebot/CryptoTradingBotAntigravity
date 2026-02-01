@@ -108,40 +108,50 @@ def run_bot_loop():
                 logging.error(f"⚠️ Error en módulo de noticias/IA: {e}")
 
             # 4. Ejecutar lógica de riesgo y Notion
+            balance = trader.get_balance()
             event, pnl = trader.check_risk_management(current_price)
             action_taken = None
             
             if event:
-                trader.place_order("sell", 0.01, current_price, event)
-                action_taken = "SELL"
-                # Log risk event with current sentiment
-                try:
-                    notion.log_trade(event, current_price, cached_sent, cached_conf, pnl)
-                    supabase.log_to_supabase(event, current_price, cached_sent, cached_conf, pnl)
-                except Exception as log_err:
-                    telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
+                order_result = trader.place_order("sell", 0.01, current_price, event)
+                if order_result:
+                    action_taken = "SELL"
+                    # Log risk event with current sentiment
+                    try:
+                        telegram.send_message(f"🚨 ORDER EXECUTED: {event} | ID: Check Logs")
+                        notion.log_trade(event, current_price, cached_sent, cached_conf, pnl)
+                        supabase.log_to_supabase(event, current_price, cached_sent, cached_conf, pnl)
+                    except Exception as log_err:
+                        telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
 
             else:
                 # Trading Logic (New Entries)
                 tech_signal = predictor.predict_next_move(df)
 
                 if tech_signal == "UP" and cached_sent == "BULLISH" and not trader.is_holding:
-                    trader.place_order("buy", 0.01, current_price, "AI_SIGNAL")
-                    action_taken = "BUY"
-                    try:
-                        notion.log_trade("BUY", current_price, cached_sent, cached_conf, 0)
-                        supabase.log_to_supabase("BUY", current_price, cached_sent, cached_conf, 0)
-                    except Exception as log_err:
-                         telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
-                
+                    if balance > 10.0:  # Minimum balance check (e.g., $10 USDT)
+                        order_result = trader.place_order("buy", 0.01, current_price, "AI_SIGNAL")
+                        if order_result:
+                            action_taken = "BUY"
+                            try:
+                                telegram.send_message(f"✅ REAL BUY ORDER EXECUTED | Price: {current_price}")
+                                notion.log_trade("BUY", current_price, cached_sent, cached_conf, 0)
+                                supabase.log_to_supabase("BUY", current_price, cached_sent, cached_conf, 0)
+                            except Exception as log_err:
+                                telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
+                    else:
+                        logging.warning(f"⚠️ Insufficient balance to buy: ${balance:.2f}")
+
                 elif tech_signal == "DOWN" and cached_sent == "BEARISH" and trader.is_holding:
-                    trader.place_order("sell", 0.01, current_price, "AI_SIGNAL")
-                    action_taken = "SELL"
-                    try:
-                        notion.log_trade("SELL", current_price, cached_sent, cached_conf, pnl)
-                        supabase.log_to_supabase("SELL", current_price, cached_sent, cached_conf, pnl)
-                    except Exception as log_err:
-                         telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
+                    order_result = trader.place_order("sell", 0.01, current_price, "AI_SIGNAL")
+                    if order_result:
+                        action_taken = "SELL"
+                        try:
+                            telegram.send_message(f"🔻 REAL SELL ORDER EXECUTED | Price: {current_price}")
+                            notion.log_trade("SELL", current_price, cached_sent, cached_conf, pnl)
+                            supabase.log_to_supabase("SELL", current_price, cached_sent, cached_conf, pnl)
+                        except Exception as log_err:
+                             telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
             
             # Report final status for this cycle
             if action_taken:
