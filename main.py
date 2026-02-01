@@ -119,7 +119,7 @@ def run_bot_loop():
                     # Log risk event with current sentiment
                     try:
                         telegram.send_message(f"🚨 ORDER EXECUTED: {event} | ID: Check Logs")
-                        notion.log_trade(event, current_price, cached_sent, cached_conf, pnl)
+                        notion.log_trade(action=event, price=float(current_price), sentiment=cached_sent, confidence=float(cached_conf), profit=float(pnl))
                         supabase.log_to_supabase(event, current_price, cached_sent, cached_conf, pnl)
                     except Exception as log_err:
                         telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
@@ -135,7 +135,7 @@ def run_bot_loop():
                             action_taken = "BUY"
                             try:
                                 telegram.send_message(f"✅ REAL BUY ORDER EXECUTED | Price: {current_price}")
-                                notion.log_trade("BUY", current_price, cached_sent, cached_conf, 0)
+                                notion.log_trade(action="BUY", price=float(current_price), sentiment=cached_sent, confidence=float(cached_conf), profit=0.0)
                                 supabase.log_to_supabase("BUY", current_price, cached_sent, cached_conf, 0)
                             except Exception as log_err:
                                 telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
@@ -148,7 +148,7 @@ def run_bot_loop():
                         action_taken = "SELL"
                         try:
                             telegram.send_message(f"🔻 REAL SELL ORDER EXECUTED | Price: {current_price}")
-                            notion.log_trade("SELL", current_price, cached_sent, cached_conf, pnl)
+                            notion.log_trade(action="SELL", price=float(current_price), sentiment=cached_sent, confidence=float(cached_conf), profit=float(pnl))
                             supabase.log_to_supabase("SELL", current_price, cached_sent, cached_conf, pnl)
                         except Exception as log_err:
                              telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
