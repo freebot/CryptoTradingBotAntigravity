@@ -14,3 +14,4 @@ upstash-redis
 supabase
 streamlit
 plotly
+streamlit-autorefresh
