@@ -154,8 +154,18 @@ last_confidence = 0.0
 
 if not df_logs.empty:
     realized_pnl = df_logs[df_logs['action'].str.contains('CLOSE', na=False)]['pnl'].sum()
-    last_sentiment = df_logs.iloc[0]['sentiment']
-    last_confidence = df_logs.iloc[0]['confidence']
+    
+    # Get latest log entry
+    latest_log = df_logs.iloc[0]
+    last_sentiment = latest_log.get('sentiment', 'WAITING...')
+    try:
+        last_confidence = float(latest_log.get('confidence', 0.0))
+    except:
+        last_confidence = 0.0
+else:
+    realized_pnl = 0.0
+    last_sentiment = "WAITING..."
+    last_confidence = 0.0
 
 # 2. Top Metrics Bar
 m1, m2, m3, m4 = st.columns(4)
