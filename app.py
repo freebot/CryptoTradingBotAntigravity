@@ -18,20 +18,19 @@ st.set_page_config(
 # Auto-refresh every 5 minutes (300000ms)
 st_autorefresh(interval=300000, key="datarefresh")
 
-# --- Custom CSS for "Pro" Look ---
+# --- Custom CSS ---
 st.markdown("""
 <style>
     .metric-card {
         background-color: #1e1e1e;
         border: 1px solid #333;
-        padding: 20px;
-        border-radius: 10px;
+        padding: 15px;
+        border-radius: 8px;
         color: white;
     }
-    .stApp {
-        background-color: #0e1117;
-        color: white;
-    }
+    .bullish { color: #00ff00; font-weight: bold; }
+    .bearish { color: #ff0000; font-weight: bold; }
+    .neutral { color: #aaaaaa; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -55,10 +54,14 @@ def init_exchange():
         return None
         
     try:
+        # Using 'linear' (USDT Perpetual) as default for fetch_positions consistency
         exchange = ccxt.bybit({
             'apiKey': api_key,
             'secret': secret,
-            'options': {'defaultType': 'future'}
+            'options': {
+                'defaultType': 'future',
+                'adjustForTimeDifference': True
+            }
         })
         exchange.set_sandbox_mode(True)
         return exchange
@@ -70,181 +73,189 @@ exchange = init_exchange()
 
 # --- Data Functions ---
 def get_candles(symbol="BTC/USDT", timeframe="1h", limit=100):
-    if not exchange:
-        return pd.DataFrame()
+    if not exchange: return pd.DataFrame()
     try:
-        # Bybit symbol conversion if needed, but 'BTC/USDT:USDT' works with fetch_ohlcv in newer ccxt
+        # Ensure symbol format is correct for ccxt bybit
+        # Sometimes "BTC/USDT:USDT" works better for futures
         ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         return df
-    except Exception as e:
-        st.error(f"Error fetching candles: {e}")
+    except:
         return pd.DataFrame()
 
 def get_positions():
-    if not exchange:
-        return []
+    if not exchange: return []
     try:
-        positions = exchange.fetch_positions(symbols=["BTC/USDT:USDT"]) 
+        # Fetch positions for linear markets (USDT perps)
+        positions = exchange.fetch_positions(symbols=["BTC/USDT:USDT", "ETH/USDT:USDT"])
         active = [p for p in positions if float(p['contracts']) > 0]
         return active
-    except Exception:
+    except:
         return []
 
 def get_balance():
-    if not exchange:
-        # Fallback to Supabase mock balance or 0 if no exchange
-        return 0.0, 0.0
+    if not exchange: return 0.0, 0.0
     try:
-        bal = exchange.fetch_balance()
-        total = float(bal['USDT']['total'])
-        # Try to calculate 'Equity' roughly: Total Balance + Unrealized PnL from positions
-        equity = total # Start with total
-        # Add uPnL if available in balance or from positions
-        # Bybit 'total' often includes uPnL in 'equity' field if accessing via specific endpoint,
-        # but standard ccxt 'total' is usually wallet balance. Let's check positions for uPnL.
+        # Attempt to fetch balance. Try 'unified' param if default fails or returns 0
+        bal = exchange.fetch_balance({'type': 'unified'})
+        
+        # Check USDT total. Adjust key based on raw response if needed, but ccxt usually standardizes to 'USDT'
+        total_usdt = float(bal.get('USDT', {}).get('total', 0.0))
+        
+        # Calculate Equity = Balance + Unrealized PnL
+        equity = total_usdt
         positions = get_positions()
         upnl = sum([float(p['unrealizedPnl']) for p in positions])
         equity += upnl
-        return total, equity
-    except:
-        return 0.0, 0.0
-
-def get_db_stats():
-    if not supabase:
-        return pd.DataFrame()
-    try:
-        # Fetch last 50 logs for chart markers and table
-        response = supabase.table("trading_logs").select("*").order("created_at", desc=True).limit(50).execute()
-        df = pd.DataFrame(response.data)
-        if df.empty:
-            return df
         
-        df['created_at'] = pd.to_datetime(df['created_at'])
+        return total_usdt, equity
+    except Exception as e:
+        # Fallback to simple spot/default fetch
+        try:
+            bal = exchange.fetch_balance()
+            total_usdt = float(bal.get('USDT', {}).get('total', 0.0))
+            return total_usdt, total_usdt
+        except:
+            return 0.0, 0.0
+
+def get_db_logs():
+    if not supabase: return pd.DataFrame()
+    try:
+        response = supabase.table("trading_logs").select("*").order("created_at", desc=True).limit(100).execute()
+        df = pd.DataFrame(response.data)
+        if not df.empty:
+            df['created_at'] = pd.to_datetime(df['created_at'])
         return df
     except:
         return pd.DataFrame()
 
-# --- Sidebar Controls ---
-with st.sidebar:
-    st.header("⚙️ Settings")
-    symbol = st.selectbox("Symbol", ["BTC/USDT:USDT", "ETH/USDT:USDT"])
-    timeframe = st.selectbox("Timeframe", ["1h", "4h", "1d", "15m"])
-    if st.button("Refresh Data"):
-        st.cache_data.clear()
-
 # --- Main Dashboard ---
 
-# 1. Top Metrics Bar
+# 1. Fetch Data
 bal_wallet, bal_equity = get_balance()
 active_positions = get_positions()
-df_logs = get_db_stats()
+df_logs = get_db_logs()
 
-# Calculate realized PnL from logs if possible or just use equity
+# Calculate Metrics
 realized_pnl = 0.0
-if not df_logs.empty:
-    realized_pnl = df_logs[df_logs['action'].str.contains('CLOSE', na=False)]['pnl'].sum()
-
 last_sentiment = "NEUTRAL"
 last_confidence = 0.0
+
 if not df_logs.empty:
+    realized_pnl = df_logs[df_logs['action'].str.contains('CLOSE', na=False)]['pnl'].sum()
     last_sentiment = df_logs.iloc[0]['sentiment']
     last_confidence = df_logs.iloc[0]['confidence']
 
+# 2. Top Metrics Bar
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("💰 Wallet Balance", f"${bal_wallet:,.2f}")
 m2.metric("💎 Equity", f"${bal_equity:,.2f}", delta=f"{bal_equity-bal_wallet:+.2f}")
-m3.metric("📈 Total Realized PnL (Logs)", f"{realized_pnl:+.2f}%")
-m4.metric("🤖 AI Sentiment", f"{last_sentiment}", f"{last_confidence:.2f} Conf.")
+m3.metric("📈 Realized PnL", f"{realized_pnl:+.2f}%")
+
+# Custom Sentiment Metric with Color
+sent_color = "neutral"
+if "bull" in last_sentiment.lower(): sent_color = "bullish"
+if "bear" in last_sentiment.lower(): sent_color = "bearish"
+
+m4.markdown(f"""
+<div style="text-align: center;">
+    <span style="font-size: 0.8rem; color: #888;">AI Sentiment</span><br>
+    <span class="{sent_color}" style="font-size: 1.5rem;">{last_sentiment}</span><br>
+    <span style="font-size: 0.8rem;">{last_confidence:.2f} Conf.</span>
+</div>
+""", unsafe_allow_html=True)
 
 st.markdown("---")
 
-# 2. Main Layout: Chart with Markers (Left 75%) + Positions/Logs (Right 25%)
+# 3. Chart & Details
 c1, c2 = st.columns([3, 1])
 
 with c1:
-    st.subheader(f"📊 {symbol} Price Action & Trade Markers")
-    df_candles = get_candles(symbol, timeframe)
+    st.subheader("📊 Market Overview")
+    
+    # Try getting Candles first
+    df_candles = get_candles("BTC/USDT", "1h")
+    
+    fig = go.Figure()
     
     if not df_candles.empty:
-        fig = go.Figure(data=[go.Candlestick(
+        # Candlestick Chart
+        fig.add_trace(go.Candlestick(
             x=df_candles['timestamp'],
-            open=df_candles['open'],
-            high=df_candles['high'],
-            low=df_candles['low'],
-            close=df_candles['close'],
-            name='Price'
-        )])
-        
-        # Add Markers from Logs (Superimpose)
-        if not df_logs.empty:
-            # Filter trades within the candle time range roughly
-            min_time = df_candles['timestamp'].min()
-            recent_trades = df_logs[df_logs['created_at'] >= min_time]
+            open=df_candles['open'], high=df_candles['high'],
+            low=df_candles['low'], close=df_candles['close'],
+            name='BTC/USDT'
+        ))
+    elif not df_logs.empty:
+        # Fallback: Line Chart from DB Logs
+        st.warning("⚠️ No candle data from Bybit. Showing execution history from Database.")
+        df_sorted = df_logs.sort_values('created_at')
+        fig.add_trace(go.Scatter(
+            x=df_sorted['created_at'],
+            y=df_sorted['price'],
+            mode='lines+markers',
+            name='Exec Price',
+            line=dict(color='#ffaa00')
+        ))
+    
+    # Add Markers for Actions (works on both charts)
+    if not df_logs.empty:
+        markers = df_logs[df_logs['action'].isin(['BUY', 'SELL', 'OPEN_LONG', 'OPEN_SHORT', 'CLOSE_LONG', 'CLOSE_SHORT'])]
+        for _, trade in markers.iterrows():
+            color = "green" if "BUY" in trade['action'] or "LONG" in trade['action'] else "red"
+            symbol_mk = "triangle-up" if color == "green" else "triangle-down"
             
-            for _, trade in recent_trades.iterrows():
-                color = "green" if "BUY" in trade['action'] or "OPEN_LONG" in trade['action'] or "CLOSE_SHORT" in trade['action'] else "red"
-                symbol_marker = "triangle-up" if color == "green" else "triangle-down"
-                
-                fig.add_trace(go.Scatter(
-                    x=[trade['created_at']],
-                    y=[trade['price']],
-                    mode='markers',
-                    marker=dict(symbol=symbol_marker, size=12, color=color),
-                    name=trade['action'],
-                    hoverinfo='text',
-                    hovertext=f"{trade['action']} <br>Price: {trade['price']} <br>Sent: {trade['sentiment']}"
-                ))
+            fig.add_trace(go.Scatter(
+                x=[trade['created_at']], y=[trade['price']],
+                mode='markers',
+                marker=dict(symbol=symbol_mk, size=14, color=color),
+                name=trade['action'],
+                hovertext=f"{trade['action']} @ ${trade['price']}"
+            ))
 
-        fig.update_layout(
-            height=600,
-            margin=dict(l=20, r=20, t=30, b=20),
-            paper_bgcolor="#0e1117",
-            plot_bgcolor="#0e1117",
-            font=dict(color="white"),
-            xaxis_rangeslider_visible=False,
-            # legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("No candle data available.")
+    fig.update_layout(
+        height=600,
+        margin=dict(l=20, r=20, t=30, b=20),
+        paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
+        font=dict(color="white"),
+        xaxis_rangeslider_visible=False
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 with c2:
-    st.subheader("⚡ Live Positions")
+    st.subheader("⚡ Active Positions")
     if active_positions:
         for pos in active_positions:
-            side = pos['side'].upper() # LONG / SHORT
-            size = pos['contracts']
-            entry = pos['entryPrice']
-            upnl = pos['unrealizedPnl']
-            
+            side = pos['side'].upper()
             st.markdown(f"""
-            <div style="border:1px solid #444; padding:10px; border-radius:5px; margin-bottom:10px; background-color: #161a25;">
-                <strong>{pos['symbol']}</strong> <br>
-                <span style="color:{'#00ff00' if side=='LONG' else '#ff0000'}">{side}</span> x{size}<br>
-                Entry: ${entry}<br>
-                uPnL: <span style="color:{'#00ff00' if float(upnl)>0 else '#ff0000'}">{upnl} USDT</span>
+            <div style="background-color: #161a25; border: 1px solid #444; border-radius: 5px; padding: 10px; margin-bottom: 10px;">
+                <strong>{pos['symbol']}</strong> <span style="float:right; font-size:0.8em;">{side}</span><br>
+                <div style="margin-top:5px; font-size:1.1em;">
+                   uPnL: <span style="color:{'#00ff00' if float(pos['unrealizedPnl'])>=0 else '#ff0000'}">
+                   {float(pos['unrealizedPnl']):.2f} USDT
+                   </span>
+                </div>
+                <div style="font-size:0.8em; color:#888; margin-top:5px;">
+                    Size: {pos['contracts']} | Entry: ${pos['entryPrice']}
+                </div>
             </div>
             """, unsafe_allow_html=True)
     else:
-        st.info("No active positions.")
-        
-    st.subheader("📜 Recent History")
+        st.info("No active positions found in Bybit.")
+
+    st.subheader("📜 Recent Logs")
     if not df_logs.empty:
-        # Show table of last 20 actions
-        display_cols = ["created_at", "action", "price", "pnl"]
         st.dataframe(
-            df_logs[display_cols].head(20),
+            df_logs[["created_at", "action", "price"]].head(15),
             column_config={
-                "created_at": st.column_config.DatetimeColumn("Time", format="MM-DD HH:mm"),
-                "price": st.column_config.NumberColumn("Price"),
-                "pnl": st.column_config.NumberColumn("PnL %", format="%.2f")
+                "created_at": st.column_config.DatetimeColumn("Time", format="HH:mm"),
+                "price": st.column_config.NumberColumn("Price")
             },
             hide_index=True,
             use_container_width=True
         )
 
-# --- Footer ---
+# Footer
 st.markdown("---")
-st.caption(f"Last updated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}. Auto-refresh active (5min).")
+st.caption("System: Antigravity | Environment: Bybit Testnet | Data: Supabase & ccxt")
