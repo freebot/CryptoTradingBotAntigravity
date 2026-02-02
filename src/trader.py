@@ -9,7 +9,10 @@ class Trader:
         # Update symbol for derivatives if needed (linear per user request)
         # Assuming symbol comes as "BTC/USDT", we might need "BTC/USDT:USDT" for future in some contexts
         # But commonly ccxt handles "BTC/USDT" with defaultType='future' correctly.
-        self.symbol = symbol
+        if "USDT" in symbol and ":" not in symbol:
+            self.symbol = symbol + ":USDT" # Force linear perpetual format for Bybit
+        else:
+            self.symbol = symbol
         self.filename = "trading_results.csv"
         
         # --- Redis Connection for State Persistence ---
@@ -226,8 +229,24 @@ class Trader:
             return False
 
     def get_balance(self):
-        """Retorna el balance virtual acumulado"""
-        return self.virtual_balance
+        """Retorna el balance real de la cuenta Unificada o el virtual si es simulación"""
+        if not self.exchange:
+            return self.virtual_balance
+            
+        try:
+            # Fetch balance especificando unified
+            bal = self.exchange.fetch_balance({'accountType': 'UNIFIED'})
+            
+            # Intentar leer USDT total
+            if 'USDT' in bal and 'total' in bal['USDT']:
+                return float(bal['USDT']['total'])
+            elif 'total' in bal and 'USDT' in bal['total']:
+                return float(bal['total']['USDT'])
+                
+            return 0.0
+        except Exception as e:
+            print(f"⚠️ Error get_balance: {e}")
+            return 0.0
 
     def _save_to_csv(self, timestamp, action, price, reason, profit):
         """Guarda la operación en el archivo CSV"""

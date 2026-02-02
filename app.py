@@ -97,27 +97,33 @@ def get_positions():
 def get_balance():
     if not exchange: return 0.0, 0.0
     try:
-        # Attempt to fetch balance. Try 'unified' param if default fails or returns 0
-        bal = exchange.fetch_balance({'type': 'unified'})
+        # 1. Try standard CCXT 'unified' fetch
+        bal = exchange.fetch_balance({'accountType': 'UNIFIED'})
         
-        # Check USDT total. Adjust key based on raw response if needed, but ccxt usually standardizes to 'USDT'
-        total_usdt = float(bal.get('USDT', {}).get('total', 0.0))
+        total_equity = 0.0
         
-        # Calculate Equity = Balance + Unrealized PnL
-        equity = total_usdt
-        positions = get_positions()
-        upnl = sum([float(p['unrealizedPnl']) for p in positions])
-        equity += upnl
+        # Check standard locations first
+        if 'USDT' in bal and 'total' in bal['USDT']:
+             total_equity = float(bal['USDT']['total'])
+             
+        # 2. Key Step for Unified: Look for 'totalEquity' in the raw info
+        # This is where the real "Capital Total" usually lives for Unified accounts
+        if 'info' in bal:
+            result = bal['info'].get('result', {})
+            # result can be a list or a dict depending on endpoint version, handle both
+            if 'list' in result and len(result['list']) > 0:
+                raw_equity = result['list'][0].get('totalEquity', 0)
+                if raw_equity:
+                    total_equity = float(raw_equity)
         
-        return total_usdt, equity
+        # If the above failed (e.g. 0), try a broad fetch without params
+        if total_equity == 0:
+            bal_spot = exchange.fetch_balance()
+            total_equity = float(bal_spot.get('USDT', {}).get('total', 0.0))
+
+        return total_equity, total_equity
     except Exception as e:
-        # Fallback to simple spot/default fetch
-        try:
-            bal = exchange.fetch_balance()
-            total_usdt = float(bal.get('USDT', {}).get('total', 0.0))
-            return total_usdt, total_usdt
-        except:
-            return 0.0, 0.0
+        return 0.0, 0.0
 
 def get_db_logs():
     if not supabase: return pd.DataFrame()
@@ -126,6 +132,8 @@ def get_db_logs():
         df = pd.DataFrame(response.data)
         if not df.empty:
             df['created_at'] = pd.to_datetime(df['created_at'])
+            # Filter out zero/null prices to prevent chart drops
+            df = df[df['price'] > 0]
         return df
     except:
         return pd.DataFrame()
