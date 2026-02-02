@@ -75,13 +75,17 @@ exchange = init_exchange()
 def get_candles(symbol="BTC/USDT", timeframe="1h", limit=100):
     if not exchange: return pd.DataFrame()
     try:
-        # Ensure symbol format is correct for ccxt bybit
-        # Sometimes "BTC/USDT:USDT" works better for futures
-        ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        # Use Linear Perpetual symbol format for V5
+        target_symbol = symbol
+        if "USDT" in symbol and ":" not in symbol:
+            target_symbol = symbol + ":USDT"
+
+        ohlcv = exchange.fetch_ohlcv(target_symbol, timeframe, limit=limit)
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         return df
-    except:
+    except Exception as e:
+        # st.sidebar.warning(f"Error fetching candles: {e}")
         return pd.DataFrame()
 
 def get_positions():
@@ -97,32 +101,30 @@ def get_positions():
 def get_balance():
     if not exchange: return 0.0, 0.0
     try:
-        # 1. Try standard CCXT 'unified' fetch
+        # Bybit V5 Unified Account Fetch
         bal = exchange.fetch_balance({'accountType': 'UNIFIED'})
         
         total_equity = 0.0
         
-        # Check standard locations first
-        if 'USDT' in bal and 'total' in bal['USDT']:
-             total_equity = float(bal['USDT']['total'])
-             
-        # 2. Key Step for Unified: Look for 'totalEquity' in the raw info
-        # This is where the real "Capital Total" usually lives for Unified accounts
+        # 1. Try to get 'totalEquity' from raw info (Best for Unified)
+        # Structure: bal['info']['result']['list'][0]['totalEquity']
         if 'info' in bal:
             result = bal['info'].get('result', {})
-            # result can be a list or a dict depending on endpoint version, handle both
-            if 'list' in result and len(result['list']) > 0:
-                raw_equity = result['list'][0].get('totalEquity', 0)
-                if raw_equity:
-                    total_equity = float(raw_equity)
+            if isinstance(result, dict) and 'list' in result:
+                data_list = result['list']
+                if len(data_list) > 0:
+                    raw_eq = data_list[0].get('totalEquity', 0)
+                    if raw_eq:
+                        total_equity = float(raw_eq)
         
-        # If the above failed (e.g. 0), try a broad fetch without params
+        # 2. Fallback to standard CCXT total if above failed
         if total_equity == 0:
-            bal_spot = exchange.fetch_balance()
-            total_equity = float(bal_spot.get('USDT', {}).get('total', 0.0))
-
+            if 'USDT' in bal and 'total' in bal['USDT']:
+                 total_equity = float(bal['USDT']['total'])
+                 
         return total_equity, total_equity
     except Exception as e:
+        # st.sidebar.error(f"Error fetching balance: {e}")
         return 0.0, 0.0
 
 def get_db_logs():
