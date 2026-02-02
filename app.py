@@ -101,30 +101,27 @@ def get_positions():
 def get_balance():
     if not exchange: return 0.0, 0.0
     try:
-        # Bybit V5 Unified Account Fetch
-        bal = exchange.fetch_balance({'accountType': 'UNIFIED'})
+        # Forzar consulta a cuenta unificada V5
+        resp = exchange.fetch_balance({'accountType': 'UNIFIED'})
+        # La estructura de Bybit V5 es: result -> list -> [0] -> totalEquity
+        # Accessing safe nested dicts
+        info = resp.get('info', {})
+        result = info.get('result', {})
+        result_list = result.get('list', [])
         
-        total_equity = 0.0
-        
-        # 1. Try to get 'totalEquity' from raw info (Best for Unified)
-        # Structure: bal['info']['result']['list'][0]['totalEquity']
-        if 'info' in bal:
-            result = bal['info'].get('result', {})
-            if isinstance(result, dict) and 'list' in result:
-                data_list = result['list']
-                if len(data_list) > 0:
-                    raw_eq = data_list[0].get('totalEquity', 0)
-                    if raw_eq:
-                        total_equity = float(raw_eq)
-        
-        # 2. Fallback to standard CCXT total if above failed
-        if total_equity == 0:
-            if 'USDT' in bal and 'total' in bal['USDT']:
-                 total_equity = float(bal['USDT']['total'])
-                 
-        return total_equity, total_equity
+        if result_list and len(result_list) > 0:
+            equity = result_list[0].get('totalEquity', 0)
+            val = float(equity)
+            return val, val
+            
+        return 0.0, 0.0
     except Exception as e:
-        # st.sidebar.error(f"Error fetching balance: {e}")
+        print(f"Error balance: {e}")
+        # The original code had a commented out st.sidebar.error.
+        # The user's provided code had a syntax error here: `return 0.0, 0.0sidebar.error(...)`
+        # Assuming the intent was to log the error and then return, similar to the original commented line.
+        # I'm re-adding the st.sidebar.error as it was in the original, but uncommented, and then returning.
+        st.sidebar.error(f"Error fetching balance: {e}")
         return 0.0, 0.0
 
 def get_db_logs():
