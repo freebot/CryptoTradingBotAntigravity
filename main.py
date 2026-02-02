@@ -113,14 +113,17 @@ def run_bot_loop():
             action_taken = None
             
             if event:
-                order_result = trader.place_order("sell", 0.01, current_price, event)
+                # Risk Management Triggered (SL/TP) - Close Position
+                current_pos = trader.position
+                trade_side = "sell" if current_pos == "LONG" else "buy"
+                
+                order_result = trader.place_order(trade_side, 0.01, current_price, event)
                 if order_result:
-                    action_taken = "SELL"
-                    # Log risk event with current sentiment
+                    action_taken = f"{event}_{current_pos}"
                     try:
-                        telegram.send_message(f"🚨 ORDER EXECUTED: {event} | ID: Check Logs")
-                        notion.log_trade(action=event, price=float(current_price), sentiment=cached_sent, confidence=float(cached_conf), profit=float(pnl))
-                        supabase.log_to_supabase(event, current_price, cached_sent, cached_conf, pnl)
+                        telegram.send_message(f"🚨 RISK TRIGGERED: {event} ({current_pos}) | ID: Check Logs")
+                        notion.log_trade(action=f"CLOSE_{current_pos}", price=float(current_price), sentiment=cached_sent, confidence=float(cached_conf), profit=float(pnl))
+                        supabase.log_to_supabase(f"CLOSE_{current_pos}", current_price, cached_sent, cached_conf, pnl)
                     except Exception as log_err:
                         telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
 
@@ -128,30 +131,57 @@ def run_bot_loop():
                 # Trading Logic (New Entries)
                 tech_signal = predictor.predict_next_move(df)
 
-                if tech_signal == "UP" and cached_sent == "BULLISH" and not trader.is_holding:
-                    if balance > 10.0:  # Minimum balance check (e.g., $10 USDT)
-                        order_result = trader.place_order("buy", 0.01, current_price, "AI_SIGNAL")
-                        if order_result:
-                            action_taken = "BUY"
-                            try:
-                                telegram.send_message(f"✅ REAL BUY ORDER EXECUTED | Price: {current_price}")
-                                notion.log_trade(action="BUY", price=float(current_price), sentiment=cached_sent, confidence=float(cached_conf), profit=0.0)
-                                supabase.log_to_supabase("BUY", current_price, cached_sent, cached_conf, 0)
-                            except Exception as log_err:
-                                telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
-                    else:
-                        logging.warning(f"⚠️ Insufficient balance to buy: ${balance:.2f}")
+                # --- Logic for LONG Position ---
+                if tech_signal == "UP" and cached_sent == "BULLISH":
+                    if trader.position == "NONE":
+                        if balance > 10.0:
+                            if trader.place_order("buy", 0.01, current_price, "AI_LONG"):
+                                action_taken = "OPEN_LONG"
+                                try:
+                                    telegram.send_message(f"✅ REAL LONG OPENED | Price: {current_price}")
+                                    notion.log_trade(action="OPEN_LONG", price=float(current_price), sentiment=cached_sent, confidence=float(cached_conf), profit=0.0)
+                                    supabase.log_to_supabase("OPEN_LONG", current_price, cached_sent, cached_conf, 0)
+                                except Exception as log_err:
+                                    telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
+                        else:
+                            logging.warning(f"⚠️ Insufficient balance for LONG: ${balance:.2f}")
 
-                elif tech_signal == "DOWN" and cached_sent == "BEARISH" and trader.is_holding:
-                    order_result = trader.place_order("sell", 0.01, current_price, "AI_SIGNAL")
-                    if order_result:
-                        action_taken = "SELL"
-                        try:
-                            telegram.send_message(f"🔻 REAL SELL ORDER EXECUTED | Price: {current_price}")
-                            notion.log_trade(action="SELL", price=float(current_price), sentiment=cached_sent, confidence=float(cached_conf), profit=float(pnl))
-                            supabase.log_to_supabase("SELL", current_price, cached_sent, cached_conf, pnl)
-                        except Exception as log_err:
-                             telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
+                    elif trader.position == "SHORT":
+                        # Signal UP + BULLISH while holding SHORT -> Close Short (Cover)
+                        if trader.place_order("buy", 0.01, current_price, "AI_COVER"):
+                            action_taken = "CLOSE_SHORT"
+                            try:
+                                telegram.send_message(f"🔄 REAL SHORT CLOSED | Price: {current_price}")
+                                notion.log_trade(action="CLOSE_SHORT", price=float(current_price), sentiment=cached_sent, confidence=float(cached_conf), profit=float(pnl))
+                                supabase.log_to_supabase("CLOSE_SHORT", current_price, cached_sent, cached_conf, pnl)
+                            except Exception as log_err:
+                                 telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
+
+                # --- Logic for SHORT Position ---
+                elif tech_signal == "DOWN" and cached_sent == "BEARISH":
+                    if trader.position == "NONE":
+                        if balance > 10.0:
+                            if trader.place_order("sell", 0.01, current_price, "AI_SHORT"):
+                                action_taken = "OPEN_SHORT"
+                                try:
+                                    telegram.send_message(f"🔻 REAL SHORT OPENED | Price: {current_price}")
+                                    notion.log_trade(action="OPEN_SHORT", price=float(current_price), sentiment=cached_sent, confidence=float(cached_conf), profit=0.0)
+                                    supabase.log_to_supabase("OPEN_SHORT", current_price, cached_sent, cached_conf, 0)
+                                except Exception as log_err:
+                                    telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
+                        else:
+                             logging.warning(f"⚠️ Insufficient balance for SHORT: ${balance:.2f}")
+
+                    elif trader.position == "LONG":
+                         # Signal DOWN + BEARISH while holding LONG -> Close Long (Sell)
+                        if trader.place_order("sell", 0.01, current_price, "AI_SELL"):
+                            action_taken = "CLOSE_LONG"
+                            try:
+                                telegram.send_message(f"📉 REAL LONG CLOSED | Price: {current_price}")
+                                notion.log_trade(action="CLOSE_LONG", price=float(current_price), sentiment=cached_sent, confidence=float(cached_conf), profit=float(pnl))
+                                supabase.log_to_supabase("CLOSE_LONG", current_price, cached_sent, cached_conf, pnl)
+                            except Exception as log_err:
+                                 telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
             
             # Report final status for this cycle
             if action_taken:
@@ -160,6 +190,7 @@ def run_bot_loop():
                 telegram.report_cycle("HOLD", current_price, cached_sent)
                 # Log HOLD status to Supabase as requested
                 try:
+                    notion.log_trade(action="WATCHING", price=float(current_price), sentiment=cached_sent, confidence=float(cached_conf), profit=float(pnl))
                     supabase.log_to_supabase("HOLD", current_price, cached_sent, cached_conf, pnl)
                 except Exception as log_err:
                     logging.error(f"Logging Error: {log_err}")

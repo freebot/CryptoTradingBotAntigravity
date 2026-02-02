@@ -1,14 +1,14 @@
 import os
 import datetime
 import pandas as pd
-import os
-import datetime
-import pandas as pd
 from upstash_redis import Redis
 import ccxt
 
 class Trader:
     def __init__(self, symbol, stop_loss_pct=0.02, take_profit_pct=0.05):
+        # Update symbol for derivatives if needed (linear per user request)
+        # Assuming symbol comes as "BTC/USDT", we might need "BTC/USDT:USDT" for future in some contexts
+        # But commonly ccxt handles "BTC/USDT" with defaultType='future' correctly.
         self.symbol = symbol
         self.filename = "trading_results.csv"
         
@@ -40,9 +40,12 @@ class Trader:
                 self.exchange = ccxt.bybit({
                     'apiKey': api_key,
                     'secret': secret,
+                    'options': {
+                        'defaultType': 'future' # IMPORTANT for Shorting
+                    }
                 })
                 self.exchange.set_sandbox_mode(True)  # MODO DE PRUEBA
-                print("✅ Connected to Bybit (Sandbox Mode)")
+                print("✅ Connected to Bybit (Sandbox Mode - Future)")
             except Exception as e:
                 print(f"⚠️ Failed to connect to Bybit: {e}")
         else:
@@ -51,13 +54,13 @@ class Trader:
         # --- Estado Inicial (Solo si no existe en Redis) ---
         if self.redis:
             # Initialize keys if they assume empty state
-            if not self.redis.get("trader:is_holding"):
-                self.redis.set("trader:is_holding", "0")
+            if not self.redis.get("trader:position"):
+                self.redis.set("trader:position", "NONE") # NONE, LONG, SHORT
             if not self.redis.get("trader:entry_price"):
                 self.redis.set("trader:entry_price", "0.0")
         else:
             # Fallback local state
-            self._is_holding = False
+            self._position = "NONE"
             self._entry_price = 0.0
 
         self.virtual_balance = 10000.0 
@@ -67,18 +70,23 @@ class Trader:
                 f.write("timestamp,action,price,reason,profit_pct\n")
 
     @property
-    def is_holding(self):
+    def position(self):
         if self.redis:
-            val = self.redis.get("trader:is_holding")
-            return val == "1" if val else False
-        return self._is_holding
+            val = self.redis.get("trader:position")
+            return val if val else "NONE"
+        return self._position
 
-    @is_holding.setter
-    def is_holding(self, value):
+    @position.setter
+    def position(self, value):
         if self.redis:
-            self.redis.set("trader:is_holding", "1" if value else "0")
+            self.redis.set("trader:position", value)
         else:
-            self._is_holding = value
+            self._position = value
+
+    @property
+    def is_holding(self):
+        # Compatible property for existing checks, though specific long/short checks preferred
+        return self.position != "NONE"
 
     @property
     def entry_price(self):
@@ -96,15 +104,26 @@ class Trader:
 
     def check_risk_management(self, current_price):
         """
-        Revisa si el precio actual toca el Stop Loss o el Take Profit.
+        Revisa si el precio toca SL/TP para la posición actual (LONG o SHORT).
         Retorna (Evento, Porcentaje_Ganancia)
         """
-        if not self.is_holding:
+        pos = self.position
+        if pos == "NONE":
             return None, 0.0
 
-        # Calcular cuánto ha ganado o perdido desde la entrada
-        change_pct = (current_price - self.entry_price) / self.entry_price
+        if pos == "LONG":
+            # Si sube ganamos
+            change_pct = (current_price - self.entry_price) / self.entry_price
+        elif pos == "SHORT":
+            # Si baja ganamos (entrada - actual) / entrada
+            change_pct = (self.entry_price - current_price) / self.entry_price
+        else:
+            return None, 0.0
 
+        # Logic is uniform: change_pct is profit relative to entry
+        # If change_pct is negative, we differ from 'profit'.
+        # Actually standard definition of profit % is similar.
+        
         if change_pct <= -self.stop_loss_pct:
             return "STOP_LOSS", change_pct * 100
         
@@ -114,78 +133,97 @@ class Trader:
         return None, change_pct * 100
 
     def place_order(self, side, amount, price, reason="AI_Signal"):
-        """Ejecuta una orden de mercado en Bybit y actualiza el estado"""
+        """
+        Ejecuta orden en Bybit.
+        side: 'buy' o 'sell'.
+        Dependiendo de self.position, esto abrirá o cerrará posiciones.
+        - NONE + buy -> OPEN LONG
+        - NONE + sell -> OPEN SHORT
+        - LONG + sell -> CLOSE LONG
+        - SHORT + buy -> CLOSE SHORT
+        """
         timestamp = datetime.datetime.now().isoformat()
-        profit_pct = 0.0
+        current_pos = self.position
         
-        # Simulación si no hay exchange configurado
-        if not self.exchange:
-            if side == "buy" and not self.is_holding:
-                self.is_holding = True
-                self.entry_price = price
-                print(f"🔵 COMPRA VIRTUAL: {self.symbol} a ${price:,.2f} | Razón: {reason}")
-                self._save_to_csv(timestamp, "BUY", price, reason, 0.0)
-                return True
-            elif side == "sell" and self.is_holding:
-                profit_pct = ((price - self.entry_price) / self.entry_price) * 100
-                self.virtual_balance += (self.virtual_balance * (profit_pct / 100))
-                print(f"🔴 VENTA VIRTUAL: {self.symbol} a ${price:,.2f} | PNL: {profit_pct:.2f}% | Razón: {reason}")
-                self.is_holding = False
-                self.entry_price = 0.0
-                self._save_to_csv(timestamp, "SELL", price, reason, profit_pct)
-                return True
+        # --- Determine Logic ---
+        action_type = ""
+        if current_pos == "NONE":
+            if side == "buy": action_type = "OPEN_LONG"
+            elif side == "sell": action_type = "OPEN_SHORT"
+        elif current_pos == "LONG" and side == "sell":
+             action_type = "CLOSE_LONG"
+        elif current_pos == "SHORT" and side == "buy":
+             action_type = "CLOSE_SHORT"
+        
+        if not action_type:
+            print(f"⚠️ Invalid Action: Side {side} with Position {current_pos}")
             return False
 
-        # Ejecución Real (Sandbox)
-        try:
-            if side == "buy" and not self.is_holding:
-                # amount es la cantidad de cripto, pero para facilitar usaremos costo en USDT si es posible
-                # o asumimos que 'amount' viene calculado correctamente.
-                # Para simplificar, compraremos fixed amount o calcularemos based on balance.
-                # Aquí asumimos que 'amount' es la cantidad de tokens a comprar.
-                
-                # Nota: En un entorno real, deberíamos chequear balance primero.
-                order = self.exchange.create_market_buy_order(self.symbol, amount)
-                
-                fill_price = order['price'] if order.get('price') else price # Fallback if None
-                if not fill_price or fill_price == 0.0:
-                     # Intentar sacar precio de trades si disponible
-                     if 'trades' in order and len(order['trades']) > 0:
-                         fill_price = order['trades'][0]['price']
-                     else:
-                         fill_price = price # Last resort fallback
-                
-                self.is_holding = True
-                self.entry_price = float(fill_price)
-                
-                print(f"🔵 BYBIT BUY: {self.symbol} a ${fill_price:,.2f} | ID: {order['id']}")
-                self._save_to_csv(timestamp, "BUY", fill_price, reason, 0.0)
+        # --- Simulation Mode ---
+        if not self.exchange:
+            if "OPEN" in action_type:
+                self.position = "LONG" if side == "buy" else "SHORT"
+                self.entry_price = price
+                print(f"🔵 SIMULATION {action_type}: {self.symbol} at ${price:,.2f}")
+                self._save_to_csv(timestamp, action_type, price, reason, 0.0)
                 return True
-
-            elif side == "sell" and self.is_holding:
-                order = self.exchange.create_market_sell_order(self.symbol, amount)
+            else: # CLOSE
+                # PnL calc
+                profit_pct = 0.0
+                if current_pos == "LONG":
+                    profit_pct = ((price - self.entry_price) / self.entry_price) * 100
+                else: # SHORT
+                    profit_pct = ((self.entry_price - price) / self.entry_price) * 100
                 
-                fill_price = order['price'] if order.get('price') else price
-                if not fill_price or fill_price == 0.0:
-                     if 'trades' in order and len(order['trades']) > 0:
-                         fill_price = order['trades'][0]['price']
-                     else:
-                         fill_price = price
-
-                profit_pct = ((float(fill_price) - self.entry_price) / self.entry_price) * 100
+                self.virtual_balance += (self.virtual_balance * (profit_pct / 100))
+                print(f"🔴 SIMULATION {action_type}: {self.symbol} at ${price:,.2f} | PnL: {profit_pct:.2f}%")
                 
-                print(f"🔴 BYBIT SELL: {self.symbol} a ${fill_price:,.2f} | PNL: {profit_pct:.2f}%")
-                
-                self.is_holding = False
+                self.position = "NONE"
                 self.entry_price = 0.0
-                self._save_to_csv(timestamp, "SELL", fill_price, reason, profit_pct)
+                self._save_to_csv(timestamp, action_type, price, reason, profit_pct)
                 return True
+
+        # --- Real Execution (Sandbox Future) ---
+        try:
+            order = None
+            if side == "buy":
+                order = self.exchange.create_market_buy_order(self.symbol, amount)
+            else:
+                order = self.exchange.create_market_sell_order(self.symbol, amount)
+            
+            # Get Fill Price
+            fill_price = order['price'] if order.get('price') else price
+            if not fill_price or fill_price == 0.0:
+                 if 'trades' in order and len(order['trades']) > 0:
+                     fill_price = order['trades'][0]['price']
+                 else:
+                     fill_price = price
+            fill_price = float(fill_price)
+
+            # Update State
+            if "OPEN" in action_type:
+                self.position = "LONG" if side == "buy" else "SHORT"
+                self.entry_price = fill_price
+                print(f"🚀 BYBIT {action_type}: {self.symbol} at ${fill_price:,.2f}")
+                self._save_to_csv(timestamp, action_type, fill_price, reason, 0.0)
+            else: # CLOSE
+                profit_pct = 0.0
+                if current_pos == "LONG":
+                    profit_pct = ((fill_price - self.entry_price) / self.entry_price) * 100
+                else: # SHORT
+                    profit_pct = ((self.entry_price - fill_price) / self.entry_price) * 100
                 
+                print(f"💰 BYBIT {action_type}: {self.symbol} at ${fill_price:,.2f} | PnL: {profit_pct:.2f}%")
+                
+                self.position = "NONE"
+                self.entry_price = 0.0
+                self._save_to_csv(timestamp, action_type, fill_price, reason, profit_pct)
+            
+            return True
+
         except Exception as e:
             print(f"❌ Error executing order on Bybit: {e}")
             return False
-            
-        return False
 
     def get_balance(self):
         """Retorna el balance virtual acumulado"""
