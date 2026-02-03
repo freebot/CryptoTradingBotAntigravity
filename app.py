@@ -101,20 +101,24 @@ def get_positions():
 def get_balance():
     if not exchange: return 0.0, 0.0
     try:
-        # Forzar consulta a cuenta UNIFIED
-        params = {'accountType': 'UNIFIED'}
-        balance = exchange.fetch_balance(params)
+        # Forzar consulta a cuenta UNIFIED usando endpoint privado directo V5
+        response = exchange.private_get_v5_account_wallet_balance({
+            'accountType': 'UNIFIED',
+            'coin': 'USDT'
+        })
         
-        # Estructura real de Bybit V5: result -> list -> [0] -> totalEquity
-        # Accedemos a través del campo 'info' que contiene la respuesta cruda de la API
-        if 'info' in balance and 'result' in balance['info'] and 'list' in balance['info']['result']:
-            equity = balance['info']['result']['list'][0]['totalEquity']
+        # Estructura: result -> list -> [0] -> totalEquity
+        result = response.get('result', {})
+        result_list = result.get('list', [])
+        
+        if result_list:
+            equity = result_list[0].get('totalEquity', 0)
             val = float(equity)
             return val, val
 
         return 0.0, 0.0
     except Exception as e:
-        # st.error(f"Error de conexión con Bybit: {e}")
+        st.sidebar.error(f"Bybit API Error: {e}")
         return 0.0, 0.0
 
 def get_db_logs():
