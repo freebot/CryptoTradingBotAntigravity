@@ -16,7 +16,9 @@ from src.utils import add_indicators
 from src.notion_logger import NotionLogger
 from src.supabase_logger import SupabaseLogger
 from src.telegram_logger import TelegramLogger
+from src.telegram_logger import TelegramLogger
 from src.news_fetcher import NewsFetcher
+from src.whale_fetcher import WhaleFetcher
 
 logging.basicConfig(level=logging.INFO)
 
@@ -76,7 +78,9 @@ def run_bot_loop():
     notion = NotionLogger()
     supabase = SupabaseLogger()
     telegram = TelegramLogger()
+    telegram = TelegramLogger()
     fetcher = NewsFetcher()
+    whale_tracker = WhaleFetcher()
 
     last_news_time = 0
     cached_sent, cached_conf = "NEUTRAL", 0.5
@@ -97,12 +101,17 @@ def run_bot_loop():
             try:
                 if (time.time() - last_news_time) > (settings['news_fetch_interval_minutes'] * 60):
                     news = fetcher.get_latest_news()
-                    if news:
-                        # 3. Consultar sentimiento a la API del Space
-                        logging.info("Analyzing news sentiment...")
-                        cached_sent, cached_conf = analyzer.analyze(news)
+                    whale_txts, whale_bias = whale_tracker.get_latest_movements()
+                    
+                    combined_context = news + whale_txts
+                    
+                    if combined_context:
+                        # 3. Consultar sentimiento a la API del Space (Cerebro Unificado)
+                        logging.info(f"Analyzing context: {len(news)} news + {len(whale_txts)} whale signals...")
+                        cached_sent, cached_conf = analyzer.analyze(combined_context)
                     else:
-                        logging.info("No news found to analyze.")
+                        logging.info("No new context (news/whales) to analyze.")
+                        
                     last_news_time = time.time()
             except Exception as e:
                 logging.error(f"⚠️ Error en módulo de noticias/IA: {e}")
