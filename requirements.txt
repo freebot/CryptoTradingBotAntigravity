@@ -1,4 +1,4 @@
-ccxt
+alpaca-py
 transformers
 torch
 pandas

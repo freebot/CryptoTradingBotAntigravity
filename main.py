@@ -56,6 +56,9 @@ def run_bot_loop():
     
     with open('config/settings.json') as f:
         settings = json.load(f)
+    
+    # Force Alpaca standard symbol
+    settings['symbol'] = 'BTC/USD'
 
     loader = DataLoader()
     trader = Trader(settings['symbol'])

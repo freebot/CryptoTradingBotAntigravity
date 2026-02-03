@@ -2,17 +2,15 @@ import os
 import datetime
 import pandas as pd
 from upstash_redis import Redis
-import ccxt
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import MarketOrderRequest
+from alpaca.trading.enums import OrderSide, TimeInForce
 
 class Trader:
     def __init__(self, symbol, stop_loss_pct=0.02, take_profit_pct=0.05):
-        # Update symbol for derivatives if needed (linear per user request)
-        # Assuming symbol comes as "BTC/USDT", we might need "BTC/USDT:USDT" for future in some contexts
-        # But commonly ccxt handles "BTC/USDT" with defaultType='future' correctly.
-        if "USDT" in symbol and ":" not in symbol:
-            self.symbol = symbol + ":USDT" # Force linear perpetual format for Bybit
-        else:
-            self.symbol = symbol
+        # Alpaca uses standard symbols like "BTC/USD"
+        self.symbol = "BTC/USD" if "BTC" in symbol or "USD" in symbol else symbol
+        
         self.filename = "trading_results.csv"
         
         # --- Redis Connection for State Persistence ---
@@ -23,7 +21,6 @@ class Trader:
         if url and token:
             try:
                 self.redis = Redis(url=url, token=token)
-                # Test connection (simple get)
                 self.redis.get("test_connection")
                 print("✅ Connected to Upstash Redis for State Memory")
             except Exception as e:
@@ -33,34 +30,21 @@ class Trader:
         self.stop_loss_pct = stop_loss_pct
         self.take_profit_pct = take_profit_pct
         
-        # --- Configuración Exchange (Bybit) ---
-        api_key = os.getenv("BYBIT_API_KEY")
-        secret = os.getenv("BYBIT_SECRET_KEY")
+        # --- Configuración Exchange (Alpaca) ---
+        api_key = os.getenv("ALPACA_API_KEY")
+        secret = os.getenv("ALPACA_SECRET_KEY")
         
-        self.exchange = None
+        self.trading_client = None
         if api_key and secret:
             try:
-                self.exchange = ccxt.bybit({
-                    'apiKey': api_key,
-                    'secret': secret,
-                    'options': {
-                        'defaultType': 'future' # IMPORTANT for Shorting
-                    }
-                })
-                self.exchange.set_sandbox_mode(True)  # MODO DE PRUEBA
-                print("✅ Connected to Bybit (Sandbox Mode - Future)")
-                
-                # Set Leverage to 1x for Safety
-                try:
-                    self.exchange.set_leverage(1, self.symbol)
-                    print(f"✅ Leverage set to 1x for {self.symbol}")
-                except Exception as lev_err:
-                    print(f"⚠️ Could not set leverage: {lev_err}")
-                    
+                self.trading_client = TradingClient(api_key, secret, paper=True)
+                # Quick test
+                self.trading_client.get_account()
+                print("✅ Connected to Alpaca (Paper Trading)")
             except Exception as e:
-                print(f"⚠️ Failed to connect to Bybit: {e}")
+                print(f"⚠️ Failed to connect to Alpaca: {e}")
         else:
-             print("⚠️ Bybit credentials missing. Running in Simulation Mode.")
+             print("⚠️ Alpaca credentials missing. Running in Simulation Mode.")
         
         # --- Estado Inicial (Solo si no existe en Redis) ---
         if self.redis:
@@ -96,7 +80,6 @@ class Trader:
 
     @property
     def is_holding(self):
-        # Compatible property for existing checks, though specific long/short checks preferred
         return self.position != "NONE"
 
     @property
@@ -130,10 +113,6 @@ class Trader:
             change_pct = (self.entry_price - current_price) / self.entry_price
         else:
             return None, 0.0
-
-        # Logic is uniform: change_pct is profit relative to entry
-        # If change_pct is negative, we differ from 'profit'.
-        # Actually standard definition of profit % is similar.
         
         if change_pct <= -self.stop_loss_pct:
             return "STOP_LOSS", change_pct * 100
@@ -145,13 +124,10 @@ class Trader:
 
     def place_order(self, side, amount, price, reason="AI_Signal"):
         """
-        Ejecuta orden en Bybit.
-        side: 'buy' o 'sell'.
-        Dependiendo de self.position, esto abrirá o cerrará posiciones.
-        - NONE + buy -> OPEN LONG
-        - NONE + sell -> OPEN SHORT
-        - LONG + sell -> CLOSE LONG
-        - SHORT + buy -> CLOSE SHORT
+        Ejecuta orden en Alpaca.
+        side: 'buy' (LONG/COVER) o 'sell' (SHORT/DUMP).
+        amount: Notional or qty. We'll use approx qty based on $ amount if needed or fixed qty.
+        Current calling code sends 0.01 which seems like BTC quantity.
         """
         timestamp = datetime.datetime.now().isoformat()
         current_pos = self.position
@@ -170,8 +146,55 @@ class Trader:
             print(f"⚠️ Invalid Action: Side {side} with Position {current_pos}")
             return False
 
-        # --- Simulation Mode ---
-        if not self.exchange:
+        # --- Real Execution (Alpaca) ---
+        if self.trading_client:
+            try:
+                # Map side
+                alpaca_side = OrderSide.BUY if side == "buy" else OrderSide.SELL
+                
+                # Create Market Order
+                # We use amount as Qty. If calling code sends 0.01 BTC, that's Qty.
+                order_data = MarketOrderRequest(
+                    symbol=self.symbol,
+                    qty=amount,
+                    side=alpaca_side,
+                    time_in_force=TimeInForce.GTC
+                )
+                
+                print(f"🚀 ALPACA SUBMITTING {action_type} for {self.symbol}...")
+                order = self.trading_client.submit_order(order_data)
+                
+                # Ideally fetch updated fill price, but for speed we might trust 'price' argument or fetch latest
+                # Alpaca orders fill async. We will log the 'trigger' price.
+                fill_price = price 
+                
+                # Update State
+                if "OPEN" in action_type:
+                    self.position = "LONG" if side == "buy" else "SHORT"
+                    self.entry_price = fill_price
+                    print(f"✅ ALPACA {action_type} Submitted. Ref price: ${fill_price:,.2f}")
+                    self._save_to_csv(timestamp, action_type, fill_price, reason, 0.0)
+                else: # CLOSE
+                    profit_pct = 0.0
+                    if current_pos == "LONG":
+                        profit_pct = ((fill_price - self.entry_price) / self.entry_price) * 100
+                    else: # SHORT
+                        profit_pct = ((self.entry_price - fill_price) / self.entry_price) * 100
+                    
+                    print(f"💰 ALPACA {action_type} Submitted. Est PnL: {profit_pct:.2f}%")
+                    
+                    self.position = "NONE"
+                    self.entry_price = 0.0
+                    self._save_to_csv(timestamp, action_type, fill_price, reason, profit_pct)
+                
+                return True
+
+            except Exception as e:
+                print(f"❌ Error executing order on Alpaca: {e}")
+                return False
+        
+        # --- Simulation Fallback ---
+        else:
             if "OPEN" in action_type:
                 self.position = "LONG" if side == "buy" else "SHORT"
                 self.entry_price = price
@@ -179,7 +202,6 @@ class Trader:
                 self._save_to_csv(timestamp, action_type, price, reason, 0.0)
                 return True
             else: # CLOSE
-                # PnL calc
                 profit_pct = 0.0
                 if current_pos == "LONG":
                     profit_pct = ((price - self.entry_price) / self.entry_price) * 100
@@ -194,67 +216,17 @@ class Trader:
                 self._save_to_csv(timestamp, action_type, price, reason, profit_pct)
                 return True
 
-        # --- Real Execution (Sandbox Future) ---
-        try:
-            order = None
-            if side == "buy":
-                order = self.exchange.create_market_buy_order(self.symbol, amount)
-            else:
-                order = self.exchange.create_market_sell_order(self.symbol, amount)
-            
-            # Get Fill Price
-            fill_price = order['price'] if order.get('price') else price
-            if not fill_price or fill_price == 0.0:
-                 if 'trades' in order and len(order['trades']) > 0:
-                     fill_price = order['trades'][0]['price']
-                 else:
-                     fill_price = price
-            fill_price = float(fill_price)
-
-            # Update State
-            if "OPEN" in action_type:
-                self.position = "LONG" if side == "buy" else "SHORT"
-                self.entry_price = fill_price
-                print(f"🚀 BYBIT {action_type}: {self.symbol} at ${fill_price:,.2f}")
-                self._save_to_csv(timestamp, action_type, fill_price, reason, 0.0)
-            else: # CLOSE
-                profit_pct = 0.0
-                if current_pos == "LONG":
-                    profit_pct = ((fill_price - self.entry_price) / self.entry_price) * 100
-                else: # SHORT
-                    profit_pct = ((self.entry_price - fill_price) / self.entry_price) * 100
-                
-                print(f"💰 BYBIT {action_type}: {self.symbol} at ${fill_price:,.2f} | PnL: {profit_pct:.2f}%")
-                
-                self.position = "NONE"
-                self.entry_price = 0.0
-                self._save_to_csv(timestamp, action_type, fill_price, reason, profit_pct)
-            
-            return True
-
-        except Exception as e:
-            print(f"❌ Error executing order on Bybit: {e}")
-            return False
-
     def get_balance(self):
-        """Retorna el balance real de la cuenta Unificada o el virtual si es simulación"""
-        if not self.exchange:
-            return self.virtual_balance
-            
-        try:
-            # Fetch balance especificando unified
-            bal = self.exchange.fetch_balance({'accountType': 'UNIFIED'})
-            
-            # Intentar leer USDT total
-            if 'USDT' in bal and 'total' in bal['USDT']:
-                return float(bal['USDT']['total'])
-            elif 'total' in bal and 'USDT' in bal['total']:
-                return float(bal['total']['USDT'])
-                
-            return 0.0
-        except Exception as e:
-            print(f"⚠️ Error get_balance: {e}")
-            return 0.0
+        """Retorna el 'cash' disponible en Alpaca"""
+        if self.trading_client:
+            try:
+                account = self.trading_client.get_account()
+                # 'cash' is a string in Alpaca API response usually
+                return float(account.cash)
+            except Exception as e:
+                print(f"⚠️ Error fetching Alpaca balance: {e}")
+                return 0.0
+        return self.virtual_balance
 
     def _save_to_csv(self, timestamp, action, price, reason, profit):
         """Guarda la operación en el archivo CSV"""
