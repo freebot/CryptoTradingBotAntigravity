@@ -101,27 +101,20 @@ def get_positions():
 def get_balance():
     if not exchange: return 0.0, 0.0
     try:
-        # Forzar consulta a cuenta unificada V5
-        resp = exchange.fetch_balance({'accountType': 'UNIFIED'})
-        # La estructura de Bybit V5 es: result -> list -> [0] -> totalEquity
-        # Accessing safe nested dicts
-        info = resp.get('info', {})
-        result = info.get('result', {})
-        result_list = result.get('list', [])
+        # Forzar consulta a cuenta UNIFIED
+        params = {'accountType': 'UNIFIED'}
+        balance = exchange.fetch_balance(params)
         
-        if result_list and len(result_list) > 0:
-            equity = result_list[0].get('totalEquity', 0)
+        # Estructura real de Bybit V5: result -> list -> [0] -> totalEquity
+        # Accedemos a través del campo 'info' que contiene la respuesta cruda de la API
+        if 'info' in balance and 'result' in balance['info'] and 'list' in balance['info']['result']:
+            equity = balance['info']['result']['list'][0]['totalEquity']
             val = float(equity)
             return val, val
-            
+
         return 0.0, 0.0
     except Exception as e:
-        print(f"Error balance: {e}")
-        # The original code had a commented out st.sidebar.error.
-        # The user's provided code had a syntax error here: `return 0.0, 0.0sidebar.error(...)`
-        # Assuming the intent was to log the error and then return, similar to the original commented line.
-        # I'm re-adding the st.sidebar.error as it was in the original, but uncommented, and then returning.
-        st.sidebar.error(f"Error fetching balance: {e}")
+        # st.error(f"Error de conexión con Bybit: {e}")
         return 0.0, 0.0
 
 def get_db_logs():
