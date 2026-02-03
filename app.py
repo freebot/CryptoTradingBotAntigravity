@@ -143,7 +143,7 @@ else:
 # 2. Top Metrics Bar
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("💰 Wallet Balance", f"${bal_equity:,.2f}") # Shown as Total Equity
-m2.metric("💵 Cash Available", f"${bal_cash:,.2f}") # Shown as Cash
+m2.metric("💵 Efectivo Disponible", f"${bal_cash:,.2f}") # Shown as Cash
 m3.metric("📈 Realized PnL", f"{realized_pnl:+.2f}%")
 
 # Custom Sentiment Metric with Color
