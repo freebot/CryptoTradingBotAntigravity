@@ -16,7 +16,6 @@ from src.utils import add_indicators
 from src.notion_logger import NotionLogger
 from src.supabase_logger import SupabaseLogger
 from src.telegram_logger import TelegramLogger
-from src.telegram_logger import TelegramLogger
 from src.news_fetcher import NewsFetcher
 from src.whale_fetcher import WhaleFetcher
 
@@ -77,7 +76,6 @@ def run_bot_loop():
     predictor = PricePredictor()
     notion = NotionLogger()
     supabase = SupabaseLogger()
-    telegram = TelegramLogger()
     telegram = TelegramLogger()
     fetcher = NewsFetcher()
     whale_tracker = WhaleFetcher()

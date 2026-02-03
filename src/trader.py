@@ -49,6 +49,14 @@ class Trader:
                 })
                 self.exchange.set_sandbox_mode(True)  # MODO DE PRUEBA
                 print("✅ Connected to Bybit (Sandbox Mode - Future)")
+                
+                # Set Leverage to 1x for Safety
+                try:
+                    self.exchange.set_leverage(1, self.symbol)
+                    print(f"✅ Leverage set to 1x for {self.symbol}")
+                except Exception as lev_err:
+                    print(f"⚠️ Could not set leverage: {lev_err}")
+                    
             except Exception as e:
                 print(f"⚠️ Failed to connect to Bybit: {e}")
         else:

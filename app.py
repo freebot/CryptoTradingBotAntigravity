@@ -124,8 +124,8 @@ def get_db_logs():
         df = pd.DataFrame(response.data)
         if not df.empty:
             df['created_at'] = pd.to_datetime(df['created_at'])
-            # Filter out zero/null prices to prevent chart drops
-            df = df[df['price'] > 0]
+            # Filter out zero/null/anomalous prices to prevent chart drops
+            df = df[df['price'] > 1000]
         return df
     except:
         return pd.DataFrame()
