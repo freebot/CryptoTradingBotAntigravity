@@ -142,7 +142,7 @@ def run_bot_loop():
                 tech_signal = predictor.predict_next_move(df)
 
                 # --- Logic for LONG Position ---
-                if tech_signal == "UP" and cached_sent == "BULLISH":
+                if tech_signal == "UP" and cached_sent == "BULLISH" and cached_conf >= 0.60:
                     if trader.position == "NONE":
                         if balance > 10.0:
                             if trader.place_order("buy", 0.01, current_price, "AI_LONG"):
@@ -168,7 +168,7 @@ def run_bot_loop():
                                  telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
 
                 # --- Logic for SHORT Position ---
-                elif tech_signal == "DOWN" and cached_sent == "BEARISH":
+                elif tech_signal == "DOWN" and cached_sent == "BEARISH" and cached_conf >= 0.60:
                     if trader.position == "NONE":
                         if balance > 10.0:
                             if trader.place_order("sell", 0.01, current_price, "AI_SHORT"):
