@@ -57,7 +57,15 @@ try:
         df_plot['created_at'] = pd.to_datetime(df_plot['created_at'])
         st.line_chart(df_plot.set_index('created_at')['price'])
 
+        # --- LOGS RECIENTES ---
+        st.subheader("📜 Recent History")
+        st.dataframe(df[['created_at', 'action', 'price', 'sentiment']], use_container_width=True)
+    else:
+        st.info("Esperando datos de la base de datos...")
+
     # --- API CHECK ---
+    st.divider()
+    st.subheader("🔌 System Status")
     m5, m6 = st.columns(2)
     
     # Check internal API connectivity
@@ -80,12 +88,6 @@ try:
     public_url = f"https://{hf_space_host}"
     
     st.info(f"🔗 **API Public Endpoint**: `{public_url}/market/status` (Use this for OpenClaw)")
-
-    # --- LOGS RECIENTES ---
-    st.subheader("📜 Recent History")
-    st.dataframe(df[['created_at', 'action', 'price', 'sentiment']], use_container_width=True)
-    else:
-        st.info("Esperando datos de la base de datos...")
 
 except Exception as e:
     st.error(f"⚠️ Error de conexión: {e}")
