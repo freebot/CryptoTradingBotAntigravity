@@ -26,6 +26,11 @@ app = FastAPI()
 
 # Global analyzer instance to be shared
 analyzer = None
+# Global state for OpenClaw integration
+latest_market_data = {}
+openclaw_input = {}
+latest_market_data_lock = threading.Lock()
+openclaw_input_lock = threading.Lock()
 
 class SentimentRequest(BaseModel):
     texts: list[str]
@@ -45,6 +50,31 @@ def analyze_sentiment(request: SentimentRequest):
 @app.get("/")
 def health_check():
     return {"status": "running", "mode": "hybrid" if os.getenv("SPACE_ID") else "client"}
+
+# --- OpenClaw Integration Endpoints ---
+class OpenClawSignal(BaseModel):
+    action: str = None # "buy", "sell", "hold"
+    sentiment: str = None # "BULLISH", "BEARISH", "NEUTRAL"
+    confidence: float = 0.0
+    reason: str = "OpenClaw Intelligence"
+
+@app.get("/market/status")
+def get_market_status():
+    with latest_market_data_lock:
+        return latest_market_data
+
+@app.post("/openclaw/signal")
+def receive_openclaw_signal(signal: OpenClawSignal):
+    global openclaw_input
+    with openclaw_input_lock:
+        openclaw_input = {
+            "action": signal.action,
+            "sentiment": signal.sentiment,
+            "confidence": signal.confidence,
+            "reason": signal.reason,
+            "timestamp": time.time()
+        }
+    return {"status": "Signal received", "data": openclaw_input}
 
 # --- Bot Logic ---
 def run_bot_loop():
@@ -98,6 +128,18 @@ def run_bot_loop():
             current_price = float(df['close'].iloc[-1])
             df = add_indicators(df, settings)
 
+            # Update Global State for OpenClaw
+            with latest_market_data_lock:
+                latest_market_data.update({
+                    "symbol": settings['symbol'],
+                    "price": current_price,
+                    "timestamp": time.time(),
+                    "indicators": {
+                        "rsi": float(df['rti'].iloc[-1]) if 'rti' in df else 0, # Assuming rti is rsi
+                        "close": float(df['close'].iloc[-1])
+                    }
+                })
+
             # 2. IA y Noticias (Obtener noticias y sentimiento ANTES de riesgo)
             try:
                 if (time.time() - last_news_time) > (settings['news_fetch_interval_minutes'] * 60):
@@ -116,6 +158,20 @@ def run_bot_loop():
                     last_news_time = time.time()
             except Exception as e:
                 logging.error(f"⚠️ Error en módulo de noticias/IA: {e}")
+
+            # Check OpenClaw Signals but ensure thread safety
+            oc_action = None
+            oc_sentiment = None
+            with openclaw_input_lock:
+                if openclaw_input and (time.time() - openclaw_input.get("timestamp", 0) < 300): # 5 mins expiry
+                    logging.info(f"🦁 OpenClaw Signal Detected: {openclaw_input}")
+                    oc_sentiment = openclaw_input.get("sentiment")
+                    if openclaw_input.get("confidence", 0) > cached_conf:
+                         cached_sent = oc_sentiment
+                         logging.info(f"🦁 OpenClaw overwrote sentiment to {cached_sent}")
+                    
+                    if openclaw_input.get("action") in ["buy", "sell"]:
+                        oc_action = openclaw_input.get("action")
 
             # 4. Ejecutar lógica de riesgo y Notion
             balance = trader.get_balance()
@@ -142,7 +198,11 @@ def run_bot_loop():
                 tech_signal = predictor.predict_next_move(df)
 
                 # --- Logic for LONG Position ---
-                if tech_signal == "UP" and cached_sent == "BULLISH" and cached_conf >= 0.60:
+                # OpenClaw Override or Standard Logic
+                should_long = (tech_signal == "UP" and cached_sent == "BULLISH" and cached_conf >= 0.60)
+                if oc_action == "buy": should_long = True
+
+                if should_long:
                     if trader.position == "NONE":
                         if balance > 10.0:
                             if trader.place_order("buy", 0.01, current_price, "AI_LONG"):
@@ -168,7 +228,11 @@ def run_bot_loop():
                                  telegram.report_cycle("ERROR", error=f"Logging Error: {log_err}")
 
                 # --- Logic for SHORT Position ---
-                elif tech_signal == "DOWN" and cached_sent == "BEARISH" and cached_conf >= 0.60:
+                # OpenClaw Override or Standard Logic
+                should_short = (tech_signal == "DOWN" and cached_sent == "BEARISH" and cached_conf >= 0.60)
+                if oc_action == "sell": should_short = True
+
+                if should_short:
                     if trader.position == "NONE":
                         if balance > 10.0:
                             if trader.place_order("sell", 0.01, current_price, "AI_SHORT"):
@@ -238,6 +302,10 @@ def main():
         # Client Mode (GitHub Actions / Local)
         logging.info("🌍 Starting in CLIENT MODE")
         
+        # Start API for Local OpenClaw connection
+        server_thread = threading.Thread(target=uvicorn.run, args=(app,), kwargs={"host": "0.0.0.0", "port": 8000})
+        server_thread.start()
+
         # Run trading bot directly (blocking)
         # Analyzer will be initialized as Remote in run_bot_loop
         run_bot_loop()

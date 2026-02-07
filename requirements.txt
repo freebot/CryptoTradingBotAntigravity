@@ -4,3 +4,8 @@ plotly
 supabase
 alpaca-py
 python-dotenv
+fastapi
+uvicorn
+pydantic
+requests
+upstash-redis
