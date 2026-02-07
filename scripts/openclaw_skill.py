@@ -4,10 +4,17 @@ import time
 import random
 from datetime import datetime
 
+import os
+
 # --- CONFIGURATION ---
-ANTIGRAVITY_URL = "http://127.0.0.1:8000"  # Local URL where Antigravity is running
+# Configura aquí la IP de tu servidor Antigravity (AWS, Local, etc.)
+DEFAULT_URL = "http://52.1.65.187:8000" 
+ANTIGRAVITY_URL = os.getenv("ANTIGRAVITY_URL", DEFAULT_URL)
+
 MARKET_ENDPOINT = f"{ANTIGRAVITY_URL}/market/status"
 SIGNAL_ENDPOINT = f"{ANTIGRAVITY_URL}/openclaw/signal"
+
+print(f"🔌 OpenClaw Skill conectando a: {ANTIGRAVITY_URL}")
 
 def fetch_market_data():
     """Obtiene los datos actuales del mercado desde Antigravity."""
