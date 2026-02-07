@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import requests
 from alpaca.trading.client import TradingClient
 from supabase import create_client
 
@@ -56,9 +57,33 @@ try:
         df_plot['created_at'] = pd.to_datetime(df_plot['created_at'])
         st.line_chart(df_plot.set_index('created_at')['price'])
 
-        # --- LOGS RECIENTES ---
-        st.subheader("📜 Recent History")
-        st.dataframe(df[['created_at', 'action', 'price', 'sentiment']], use_container_width=True)
+    # --- API CHECK ---
+    m5, m6 = st.columns(2)
+    
+    # Check internal API connectivity
+    api_online = False
+    api_url = "http://127.0.0.1:8000/market/status"
+    try:
+        resp = requests.get(api_url, timeout=2)
+        if resp.status_code == 200:
+            api_online = True
+    except:
+        pass
+
+    if api_online:
+        m5.success("✅ Internal API: ONLINE")
+    else:
+        m5.error("❌ Internal API: OFFLINE (Check Logs)")
+
+    # Display Public URL Helper
+    hf_space_host = os.getenv("SPACE_HOST", "fr33b0t-crypto-bot.hf.space") # Default guess
+    public_url = f"https://{hf_space_host}"
+    
+    st.info(f"🔗 **API Public Endpoint**: `{public_url}/market/status` (Use this for OpenClaw)")
+
+    # --- LOGS RECIENTES ---
+    st.subheader("📜 Recent History")
+    st.dataframe(df[['created_at', 'action', 'price', 'sentiment']], use_container_width=True)
     else:
         st.info("Esperando datos de la base de datos...")
 
