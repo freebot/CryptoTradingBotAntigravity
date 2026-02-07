@@ -19,5 +19,7 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Expose the single port supported by Hugging Face Spaces
 EXPOSE 7860
 
+RUN chmod +x ./start.sh
+
 # Run the hybrid startup script
 CMD ["./start.sh"]

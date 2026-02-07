@@ -8,8 +8,8 @@ echo "🚀 Launching Antigravity Ecosystem..."
 # The API will listen on port 8000 (defined in main.py for Client Mode)
 # or 7860 (for Space Mode, though usually Spaces override this script)
 echo "Starting Bot & API (Port 8000)..."
-# API start in background
-python main.py &
+# API start in background with logging
+python main.py > api.log 2>&1 &
 
 echo "Starting Dashboard (Port 8501)..."
 # Streamlit start in background

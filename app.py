@@ -81,7 +81,18 @@ try:
     if api_online:
         m5.success("✅ Internal API: ONLINE")
     else:
-        m5.error("❌ Internal API: OFFLINE (Check Logs)")
+        m5.error("❌ Internal API: OFFLINE")
+        # --- DEBUG LOGS ---
+        try:
+            if os.path.exists("api.log"):
+                with open("api.log", "r") as f:
+                    logs = f.readlines()[-20:] # Last 20 lines
+                st.warning("⚠️ Access Logs (Last 20 lines):")
+                st.code("".join(logs))
+            else:
+                st.warning("⚠️ No api.log found.")
+        except Exception as e:
+            st.error(f"Error reading logs: {e}")
 
     # Display Public URL Helper
     hf_space_host = os.getenv("SPACE_HOST", "fr33b0t-crypto-bot.hf.space") # Default guess
