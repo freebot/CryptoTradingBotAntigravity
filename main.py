@@ -302,7 +302,8 @@ def main():
         logging.info("🚀 Starting in SERVER MODE (Hugging Face Space)")
         
         # Start API Server in background thread
-        server_thread = threading.Thread(target=uvicorn.run, args=(app,), kwargs={"host": "0.0.0.0", "port": 7860})
+        # Changed to 8000 because Nginx is now the entry point on 7860
+        server_thread = threading.Thread(target=uvicorn.run, args=(app,), kwargs={"host": "0.0.0.0", "port": 8000})
         server_thread.start()
         
         # Initialize SentimentAnalyzer locally for Server Mode
