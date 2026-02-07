@@ -1,5 +1,6 @@
 import os
 import time
+from datetime import datetime
 
 # Ensure logs are not buffered
 os.environ["PYTHONUNBUFFERED"] = "1"
@@ -52,11 +53,14 @@ def health_check():
     return {"status": "running", "mode": "hybrid" if os.getenv("SPACE_ID") else "client"}
 
 # --- OpenClaw Integration Endpoints ---
+# --- OpenClaw Integration Endpoints ---
 class OpenClawSignal(BaseModel):
-    action: str = None # "buy", "sell", "hold"
-    sentiment: str = None # "BULLISH", "BEARISH", "NEUTRAL"
-    confidence: float = 0.0
-    reason: str = "OpenClaw Intelligence"
+    signal: str  # "buy", "sell", "hold"
+    confidence: float
+    sentiment_analysis: str
+    timestamp: str = None
+    source: str = "OpenClaw"
+    additional_data: dict = {}
 
 @app.get("/market/status")
 def get_market_status():
@@ -64,15 +68,17 @@ def get_market_status():
         return latest_market_data
 
 @app.post("/openclaw/signal")
-def receive_openclaw_signal(signal: OpenClawSignal):
+def receive_openclaw_signal(body: OpenClawSignal):
     global openclaw_input
     with openclaw_input_lock:
         openclaw_input = {
-            "action": signal.action,
-            "sentiment": signal.sentiment,
-            "confidence": signal.confidence,
-            "reason": signal.reason,
-            "timestamp": time.time()
+            "signal": body.signal,
+            "sentiment": body.sentiment_analysis, # Map to internal logic
+            "confidence": body.confidence,
+            "reason": body.sentiment_analysis,
+            "timestamp": time.time(),
+            "source": body.source,
+            "additional_data": body.additional_data
         }
     return {"status": "Signal received", "data": openclaw_input}
 
@@ -128,16 +134,21 @@ def run_bot_loop():
             current_price = float(df['close'].iloc[-1])
             df = add_indicators(df, settings)
 
+
+            # Calculate Trend
+            sma_50 = df['sma_50'].iloc[-1] if 'sma_50' in df else current_price
+            trend = "up" if current_price > sma_50 else "down"
+
             # Update Global State for OpenClaw
             with latest_market_data_lock:
                 latest_market_data.update({
-                    "symbol": settings['symbol'],
-                    "price": current_price,
-                    "timestamp": time.time(),
-                    "indicators": {
-                        "rsi": float(df['rti'].iloc[-1]) if 'rti' in df else 0, # Assuming rti is rsi
-                        "close": float(df['close'].iloc[-1])
-                    }
+                    "current_price": current_price,
+                    "rsi": float(df['rsi'].iloc[-1]) if 'rsi' in df else 50.0,
+                    "trend": trend,
+                    "volume": float(df['volume'].iloc[-1]) if 'volume' in df else 0.0,
+                    "avg_volume": float(df['volume'].mean()) if 'volume' in df else 0.0,
+                    "moving_average": float(sma_50),
+                    "timestamp": datetime.now().isoformat()
                 })
 
             # 2. IA y Noticias (Obtener noticias y sentimiento ANTES de riesgo)
@@ -165,13 +176,16 @@ def run_bot_loop():
             with openclaw_input_lock:
                 if openclaw_input and (time.time() - openclaw_input.get("timestamp", 0) < 300): # 5 mins expiry
                     logging.info(f"🦁 OpenClaw Signal Detected: {openclaw_input}")
-                    oc_sentiment = openclaw_input.get("sentiment")
-                    if openclaw_input.get("confidence", 0) > cached_conf:
-                         cached_sent = oc_sentiment
-                         logging.info(f"🦁 OpenClaw overwrote sentiment to {cached_sent}")
+                    oc_sentiment = openclaw_input.get("sentiment") # "RSI indicates..."
                     
-                    if openclaw_input.get("action") in ["buy", "sell"]:
-                        oc_action = openclaw_input.get("action")
+                    # Convert unstructured sentiment description to strictly BULLISH/BEARISH if possible, 
+                    # or just rely on the 'signal' field.
+                    # For now we use the signal to override action.
+                    
+                    if openclaw_input.get("confidence", 0) > 0.7: # High confidence threshold
+                         logging.info(f"🦁 OpenClaw High Confidence Signal: {openclaw_input.get('signal')}")
+                         if openclaw_input.get("signal") in ["buy", "sell"]:
+                             oc_action = openclaw_input.get("signal")
 
             # 4. Ejecutar lógica de riesgo y Notion
             balance = trader.get_balance()

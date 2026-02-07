@@ -2,6 +2,7 @@ import requests
 import json
 import time
 import random
+from datetime import datetime
 
 # --- CONFIGURATION ---
 ANTIGRAVITY_URL = "http://127.0.0.1:8000"  # Local URL where Antigravity is running
@@ -14,7 +15,7 @@ def fetch_market_data():
         response = requests.get(MARKET_ENDPOINT, timeout=5)
         response.raise_for_status()
         data = response.json()
-        print(f"✅ Market Data Received: {data}")
+        print(f"✅ Market Data Received: {json.dumps(data, indent=2)}")
         return data
     except Exception as e:
         print(f"❌ Error fetching market data: {e}")
@@ -23,54 +24,65 @@ def fetch_market_data():
 def analyze_market(data):
     """
     Simula la inteligencia avanzada de OpenClaw.
-    Aquí es donde conectarías tu modelo de LLM real o estrategia compleja.
     """
     if not data:
         return None
 
-    price = data.get("price", 0)
-    indicators = data.get("indicators", {})
-    rsi = indicators.get("rsi", 50)
+    # Extraer datos con el nuevo formato
+    price = data.get("current_price", 0)
+    rsi = data.get("rsi", 50)
+    trend = data.get("trend", "neutral")
+    ma_50 = data.get("moving_average", 0)
+    volume = data.get("volume", 0)
     
-    # --- LOGICA DE EJEMPLO (MEJORAR CON LLM) ---
-    print(f"🧠 OpenClaw Thinking... (Price: {price}, RSI: {rsi})")
+    print(f"🧠 OpenClaw Thinking... (Price: {price}, RSI: {rsi}, Trend: {trend})")
     
-    signal = {
-        "action": "hold",
-        "sentiment": "NEUTRAL",
+    # Init Signal Structure
+    signal_payload = {
+        "signal": "hold",
         "confidence": 0.5,
-        "reason": "Market is stable, watching..."
+        "sentiment_analysis": "Market is stable, watching...",
+        "timestamp": datetime.now().isoformat(),
+        "source": "OpenClaw_Skill_v1",
+        "additional_data": {
+            "strategy": "RSI_Trend_Follow",
+            "internal_score": 0
+        }
     }
 
-    # Estrategia simple de Momentum + RSI
-    if rsi < 30:
-        signal["action"] = "buy"
-        signal["sentiment"] = "BULLISH"
-        signal["confidence"] = 0.85
-        signal["reason"] = f"RSI Oversold ({rsi:.2f}) - Buying opportunity detected by OpenClaw"
-    elif rsi > 70:
-        signal["action"] = "sell"
-        signal["sentiment"] = "BEARISH"
-        signal["confidence"] = 0.85
-        signal["reason"] = f"RSI Overbought ({rsi:.2f}) - Selling pressure imminent"
-    else:
-        # Random "Smart" Insight for the middle range
-        if random.random() > 0.8:
-            signal["sentiment"] = "BULLISH"
-            signal["confidence"] = 0.65
-            signal["reason"] = "OpenClaw detects accumulation pattern on lower timeframes."
+    # Estrategia simple de Ejemplo
+    # Si la tendencia es UP y el RSI no está sobrecomprado (>70), considerar COMPRA
+    if trend == "up" and rsi < 70:
+        if rsi < 40: # Pullback en tendencia alcista
+            signal_payload["signal"] = "buy"
+            signal_payload["confidence"] = 0.85
+            signal_payload["sentiment_analysis"] = f"Strong Uptrend with RSI Pullback ({rsi:.1f}). Buying dip."
+        else:
+            signal_payload["signal"] = "buy"
+            signal_payload["confidence"] = 0.65 # Confianza media
+            signal_payload["sentiment_analysis"] = "Trend is Up. Accumulating."
 
-    return signal
+    elif trend == "down" and rsi > 30:
+        if rsi > 60: # Rebote en tendencia bajista
+            signal_payload["signal"] = "sell"
+            signal_payload["confidence"] = 0.85
+            signal_payload["sentiment_analysis"] = f"Downtrend with RSI Spike ({rsi:.1f}). Selling rally."
+        else:
+            signal_payload["signal"] = "sell"
+            signal_payload["confidence"] = 0.65
+            signal_payload["sentiment_analysis"] = "Trend is Down. Distributing."
 
-def send_signal(signal):
+    return signal_payload
+
+def send_signal(signal_payload):
     """Envía la señal de trading a Antigravity."""
-    if not signal:
+    if not signal_payload:
         return
 
     try:
-        response = requests.post(SIGNAL_ENDPOINT, json=signal, timeout=5)
+        response = requests.post(SIGNAL_ENDPOINT, json=signal_payload, timeout=5)
         if response.status_code == 200:
-            print(f"🚀 Signal Sent to Antigravity: {signal}")
+            print(f"🚀 Signal Sent to Antigravity: {signal_payload['signal']} ({signal_payload['confidence']})")
         else:
             print(f"⚠️ Signal rejected: {response.text}")
     except Exception as e:
@@ -86,7 +98,6 @@ def run_openclaw_cycle():
     print("--- Cycle End ---\n")
 
 if __name__ == "__main__":
-    # Ejecutar en bucle (o una sola vez si es una Task programada)
     while True:
         run_openclaw_cycle()
-        time.sleep(60)  # Analizar cada minuto
+        time.sleep(60) 
