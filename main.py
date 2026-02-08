@@ -25,8 +25,10 @@ logging.basicConfig(level=logging.INFO)
 # --- FastAPI Setup ---
 app = FastAPI()
 
-# Global analyzer instance to be shared
+# Global analyzer & trader instances
 analyzer = None
+trader = None
+
 # Global state for OpenClaw integration
 latest_market_data = {}
 openclaw_input = {}
@@ -35,6 +37,11 @@ openclaw_input_lock = threading.Lock()
 
 class SentimentRequest(BaseModel):
     texts: list[str]
+
+class OrderRequest(BaseModel):
+    side: str # "buy" or "sell"
+    amount: float = 0.01
+    reason: str = "OpenClaw_Direct"
 
 @app.post("/analyze")
 def analyze_sentiment(request: SentimentRequest):
@@ -53,7 +60,6 @@ def health_check():
     return {"status": "running", "mode": "hybrid" if os.getenv("SPACE_ID") else "client"}
 
 # --- OpenClaw Integration Endpoints ---
-# --- OpenClaw Integration Endpoints ---
 class OpenClawSignal(BaseModel):
     signal: str  # "buy", "sell", "hold"
     confidence: float
@@ -66,6 +72,11 @@ class OpenClawSignal(BaseModel):
 def get_market_status():
     with latest_market_data_lock:
         return latest_market_data
+
+# Alias for plural to avoid 404s
+@app.get("/markets/status")
+def get_markets_status():
+    return get_market_status()
 
 @app.post("/openclaw/signal")
 def receive_openclaw_signal(body: OpenClawSignal):
@@ -82,9 +93,29 @@ def receive_openclaw_signal(body: OpenClawSignal):
         }
     return {"status": "Signal received", "data": openclaw_input}
 
+@app.post("/openclaw/orders")
+def place_openclaw_order(order: OrderRequest):
+    global trader
+    if not trader:
+        raise HTTPException(status_code=503, detail="Trader not initialized")
+    
+    # Get current price from cache
+    current_price = 0.0
+    with latest_market_data_lock:
+        current_price = latest_market_data.get("current_price", 0.0)
+    
+    if current_price <= 0:
+        raise HTTPException(status_code=503, detail="Market data unavailable (price=0)")
+
+    success = trader.place_order(order.side, order.amount, current_price, order.reason)
+    if success:
+        return {"status": "Order Executed", "side": order.side, "price": current_price}
+    else:
+        raise HTTPException(status_code=400, detail="Order Failed (Check balance or position)")
+
 # --- Bot Logic ---
 def run_bot_loop():
-    global analyzer
+    global analyzer, trader
     logging.info("Starting Trading Bot Loop...")
     
     # Wait 10 seconds to allow server to start and system to settle

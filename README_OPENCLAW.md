@@ -6,7 +6,9 @@ Este documento describe cómo conectar **OpenClaw** (u otro agente externo) con 
 
 1. **Antigravity (Servidor)**: El bot de trading principal ahora expone una API REST local en el puerto `8000`.
    - `GET /market/status`: Provee precio actual, indicadores técnicos (RSI, etc.) y estado.
+   - `GET /markets/status`: Alias del anterior (para evitar errores de typo).
    - `POST /openclaw/signal`: Recibe señales de trading ("buy", "sell", "hold") y análisis de sentimiento.
+   - `POST /openclaw/orders`: (NUEVO) Ejecuta una orden de compra/venta inmediatamente. JSON: `{"side": "buy", "amount": 0.01}`.
 
 2. **OpenClaw (Cliente)**: Un script de Python (Skill) que consulta el estado del mercado, aplica inteligencia (LLM o Algorítmica), y envía órdenes al bot.
 
