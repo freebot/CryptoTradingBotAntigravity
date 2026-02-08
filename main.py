@@ -8,7 +8,7 @@ import json
 import logging
 import threading
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
 from pydantic import BaseModel
 from src.data_loader import DataLoader
 from src.model import RemoteSentimentAnalyzer, PricePredictor
@@ -60,6 +60,13 @@ def health_check():
     return {"status": "running", "mode": "hybrid" if os.getenv("SPACE_ID") else "client"}
 
 # --- OpenClaw Integration Endpoints ---
+OPENCLAW_SECRET = os.getenv("OPENCLAW_SECRET", "changeme_in_production")
+
+def verify_token(x_auth_token: str = Header(None, alias="X-Auth-Token")):
+    if x_auth_token != OPENCLAW_SECRET:
+        raise HTTPException(status_code=401, detail="Invalid Authentication Token")
+    return x_auth_token
+
 class OpenClawSignal(BaseModel):
     signal: str  # "buy", "sell", "hold"
     confidence: float
@@ -70,6 +77,7 @@ class OpenClawSignal(BaseModel):
 
 @app.get("/market/status")
 def get_market_status():
+    logging.info("Endpoint /market/status accessed")
     with latest_market_data_lock:
         return latest_market_data
 
@@ -78,7 +86,7 @@ def get_market_status():
 def get_markets_status():
     return get_market_status()
 
-@app.post("/openclaw/signal")
+@app.post("/openclaw/signal", dependencies=[Depends(verify_token)])
 def receive_openclaw_signal(body: OpenClawSignal):
     global openclaw_input
     with openclaw_input_lock:
@@ -93,7 +101,7 @@ def receive_openclaw_signal(body: OpenClawSignal):
         }
     return {"status": "Signal received", "data": openclaw_input}
 
-@app.post("/openclaw/orders")
+@app.post("/openclaw/orders", dependencies=[Depends(verify_token)])
 def place_openclaw_order(order: OrderRequest):
     global trader
     if not trader:

@@ -81,7 +81,12 @@ try:
     if api_online:
         m5.success("✅ Internal API: ONLINE")
     else:
-        m5.error("❌ Internal API: OFFLINE")
+        err_msg = "OFFLINE"
+        try:
+            if 'resp' in locals():
+                err_msg = f"OFFLINE ({resp.status_code})"
+        except: pass
+        m5.error(f"❌ Internal API: {err_msg}")
         # --- DEBUG LOGS ---
         try:
             if os.path.exists("api.log"):
