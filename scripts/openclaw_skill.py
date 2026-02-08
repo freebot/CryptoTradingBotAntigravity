@@ -8,7 +8,7 @@ import os
 
 # --- CONFIGURATION ---
 # Configura aquí la IP de tu servidor Antigravity (AWS, Local, etc.)
-DEFAULT_URL = "http://52.1.65.187:8000" 
+DEFAULT_URL = "https://fr33b0t-crypto-bot.hf.space"
 ANTIGRAVITY_URL = os.getenv("ANTIGRAVITY_URL", DEFAULT_URL)
 
 MARKET_ENDPOINT = f"{ANTIGRAVITY_URL}/market/status"
