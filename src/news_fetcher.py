@@ -1,4 +1,5 @@
 import requests
+import os
 import xml.etree.ElementTree as ET
 import random
 import logging
@@ -7,6 +8,10 @@ logger = logging.getLogger(__name__)
 
 class NewsFetcher:
     def __init__(self):
+        # CryptoPanic Config
+        self.cryptopanic_key = os.getenv("CRYPTOPANIC_API_KEY")
+        self.cryptopanic_url = "https://cryptopanic.com/api/v1/posts/"
+
         # Reddit Sources (Community Sentiment)
         self.reddit_sources = [
             "https://www.reddit.com/r/Bitcoin/hot/.rss",
@@ -71,9 +76,44 @@ class NewsFetcher:
         selection = priority + normal
         return selection[:count]
 
+    def _fetch_cryptopanic(self, count=5):
+        """Fetches news from CryptoPanic API (Better quality & aggregations)"""
+        if not self.cryptopanic_key:
+            return []
+            
+        try:
+            logger.info("🔍 Fetching news from CryptoPanic API...")
+            params = {
+                "auth_token": self.cryptopanic_key,
+                "currencies": "BTC,ETH",
+                "kind": "news",
+                "filter": "important" # fetches only 'important' marked news
+            }
+            res = requests.get(self.cryptopanic_url, params=params, timeout=10)
+            data = res.json()
+            
+            headlines = []
+            if "results" in data:
+                for post in data["results"]:
+                    title = post.get("title", "")
+                    if title:
+                        headlines.append(title)
+            
+            return headlines[:count]
+        except Exception as e:
+            logger.error(f"❌ CryptoPanic Error: {e}")
+            return []
+
     def get_latest_news(self):
         """Fetches a mix of Community (Reddit) and Pro News"""
         
+        # 0. Try CryptoPanic first (Best Source)
+        cp_news = self._fetch_cryptopanic(count=5)
+        if cp_news:
+            logger.info(f"✅ News Cycle: {len(cp_news)} headlines from CryptoPanic.")
+            return cp_news
+
+        # Fallback to RSS if no API key or failure
         # 1. Get 3 from Reddit
         reddit_news = []
         random.shuffle(self.reddit_sources)
