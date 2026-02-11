@@ -21,6 +21,7 @@ class NotionLogger:
         data = {
             "parent": {"database_id": self.database_id},
             "properties": {
+                "Name": {"title": [{"text": {"content": f"Trade {action} @ {datetime.now().strftime('%Y-%m-%d %H:%M')}"}}]},
                 "Fecha": {"date": {"start": datetime.now().isoformat()}},
                 "Accion": {"select": {"name": action}},
                 "Precio": {"number": float(price)},
@@ -35,4 +36,7 @@ class NotionLogger:
             print("✅ ¡Registro publicado en Notion exitosamente!")
         else:
             print(f"❌ Error al publicar en Notion: {response.status_code}")
-            print(f"Respuesta de Notion: {response.text}") # Esto nos dirá qué columna está mal
+            try:
+                print(f"Respuesta de Notion: {response.json()}")
+            except:
+                print(f"Respuesta de Notion: {response.text}")

@@ -17,31 +17,38 @@ Este documento describe cómo conectar **OpenClaw** (u otro agente externo) con 
 ### Lado 1: Antigravity (El Bot)
 El bot ahora inicia automáticamente el servidor API cuando se ejecuta.
 
-1. Instalar dependencias nuevas:
-   ```bash
-   pip install -r requirements.txt
-   ```
-2. Ejecutar el bot normalmente:
-   ```bash
-   python main.py
-   ```
-   *Verás en los logs que el servidor API inicia en `http://0.0.0.0:8000`.*
+1.  Instalar dependencias nuevas:
+    ```bash
+    pip install -r requirements.txt
+    ```
+2.  Ejecutar el bot normalmente:
+    ```bash
+    python main.py
+    ```
+    *Verás en los logs que el servidor API inicia en `http://0.0.0.0:8000`.*
 
 ### Lado 2: OpenClaw (El Agente)
 Tienes un script listo para usar en `scripts/openclaw_skill.py`.
 
-1. **Configurar OpenClaw**:
-   - Asegúrate de que OpenClaw tenga acceso a Python y a la red local.
-   - Instala la librería `requests` en el entorno de OpenClaw si no la tiene.
+1.  **Configurar OpenClaw**:
+    -   Asegúrate de que OpenClaw tenga acceso a Python y a la red local/internet.
+    -   Instala la librería `requests` en el entorno de OpenClaw.
+    -   **IMPORTANTE**: Configura la variable de entorno `OPENCLAW_SECRET`.
+        -   En Linux/Mac: `export OPENCLAW_SECRET="tu_secreto_seguro"`
+        -   O edita el script para pruebas (no recomendado).
+        -   El valor por defecto es "changeme_in_production" (INSEGURO).
 
-2. **Ejecutar el Skill**:
-   Puedes ejecutar el script manualmente para probar la conexión:
-   ```bash
-   python scripts/openclaw_skill.py
-   ```
+2.  **Ejecutar el Skill**:
+    Puedes ejecutar el script manualmente para probar la conexión:
+    ```bash
+    # Ejemplo con secreto
+    OPENCLAW_SECRET="mi_token_secreto" python scripts/openclaw_skill.py
+    ```
 
-   O configurarlo dentro de OpenClaw como una tarea programada (cron job) para que corra cada minuto.
+    O configurarlo dentro de OpenClaw como una tarea programada (cron job) para que corra cada minuto.
 
 ## Personalización de Inteligencia
 Edita `scripts/openclaw_skill.py` en la función `analyze_market(data)`.
 Ahí puedes conectar tu LLM favorito o agregar lógica compleja. El bot Antigravity priorizará las señales de OpenClaw sobre su estrategia técnica estándar si la confianza es alta.
+
+También puedes usar la función `execute_order(side="buy", amount=..., reason="...")` si prefieres ejecución directa e inmediata sin pasar por el sistema de señales/confianza.

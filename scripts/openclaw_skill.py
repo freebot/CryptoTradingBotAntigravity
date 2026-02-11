@@ -10,9 +10,16 @@ import os
 # Configura aquí la IP de tu servidor Antigravity (AWS, Local, etc.)
 DEFAULT_URL = "https://fr33b0t-crypto-bot.hf.space"
 ANTIGRAVITY_URL = os.getenv("ANTIGRAVITY_URL", DEFAULT_URL)
+OPENCLAW_SECRET = os.getenv("OPENCLAW_SECRET", "changeme_in_production")
 
 MARKET_ENDPOINT = f"{ANTIGRAVITY_URL}/market/status"
 SIGNAL_ENDPOINT = f"{ANTIGRAVITY_URL}/openclaw/signal"
+ORDER_ENDPOINT = f"{ANTIGRAVITY_URL}/openclaw/orders"
+
+HEADERS = {
+    "X-Auth-Token": OPENCLAW_SECRET,
+    "Content-Type": "application/json"
+}
 
 print(f"🔌 OpenClaw Skill conectando a: {ANTIGRAVITY_URL}")
 
@@ -87,13 +94,39 @@ def send_signal(signal_payload):
         return
 
     try:
-        response = requests.post(SIGNAL_ENDPOINT, json=signal_payload, timeout=5)
+        response = requests.post(SIGNAL_ENDPOINT, json=signal_payload, headers=HEADERS, timeout=5)
         if response.status_code == 200:
             print(f"🚀 Signal Sent to Antigravity: {signal_payload['signal']} ({signal_payload['confidence']})")
         else:
             print(f"⚠️ Signal rejected: {response.text}")
     except Exception as e:
         print(f"❌ Error sending signal: {e}")
+
+def execute_order(side, amount=0.01, reason="OpenClaw_Direct"):
+    """
+    Ejecuta una orden directa en el bot Antigravity.
+    side: 'buy' o 'sell'
+    amount: Cantidad de BTC (o la moneda base)
+    """
+    payload = {
+        "side": side,
+        "amount": amount,
+        "reason": reason
+    }
+    
+    print(f"⚡ Executing Direct Order: {side.upper()} {amount}...")
+    try:
+        response = requests.post(ORDER_ENDPOINT, json=payload, headers=HEADERS, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            print(f"✅ Order Executed: {data}")
+            return True
+        else:
+            print(f"❌ Order Failed: {response.text}")
+            return False
+    except Exception as e:
+        print(f"❌ Error executing order: {e}")
+        return False
 
 def run_openclaw_cycle():
     """Ejecuta un ciclo de análisis."""
