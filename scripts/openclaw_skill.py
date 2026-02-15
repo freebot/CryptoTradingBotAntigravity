@@ -2,7 +2,7 @@ import requests
 import json
 import time
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import os
 
@@ -12,6 +12,7 @@ DEFAULT_URL = "https://fr33b0t-crypto-bot.hf.space"
 ANTIGRAVITY_URL = os.getenv("ANTIGRAVITY_URL", DEFAULT_URL)
 OPENCLAW_SECRET = os.getenv("OPENCLAW_SECRET", "changeme_in_production")
 
+WAKEUP_ENDPOINT = f"{ANTIGRAVITY_URL}/wake_up"
 MARKET_ENDPOINT = f"{ANTIGRAVITY_URL}/market/status"
 SIGNAL_ENDPOINT = f"{ANTIGRAVITY_URL}/openclaw/signal"
 ORDER_ENDPOINT = f"{ANTIGRAVITY_URL}/openclaw/orders"
@@ -21,14 +22,40 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
-print(f"🔌 OpenClaw Skill conectando a: {ANTIGRAVITY_URL}")
+def wake_up_server():
+    try:
+        requests.get(WAKEUP_ENDPOINT, timeout=5)
+#        print("⏰ Ping sent to wake up server.")
+    except:
+        pass
 
 def fetch_market_data():
     """Obtiene los datos actuales del mercado desde Antigravity."""
     try:
-        response = requests.get(MARKET_ENDPOINT, timeout=5)
+        # 1. First, try to ping to ensure it's awake
+        # wake_up_server()
+        
+        response = requests.get(MARKET_ENDPOINT, timeout=10)
         response.raise_for_status()
         data = response.json()
+        
+        # Check staleness
+        server_ts_iso = data.get("timestamp")
+        if server_ts_iso:
+            try:
+                server_ts = datetime.fromisoformat(server_ts_iso)
+                age = (datetime.now() - server_ts).total_seconds()
+                if age > 600: # 10 minutes
+                    print(f"⚠️ DATA IS OLD ({int(age/60)} mins ago). Server might be frozen.")
+                    # Try to hit health check to see status
+                    try:
+                       health = requests.get(ANTIGRAVITY_URL, timeout=5).json()
+                       print(f"🏥 Health Status: {health}")
+                    except:
+                       print("💀 Server unreachable via Health Check.")
+            except:
+                pass
+
         print(f"✅ Market Data Received: {json.dumps(data, indent=2)}")
         return data
     except Exception as e:
@@ -102,7 +129,7 @@ def send_signal(signal_payload):
     except Exception as e:
         print(f"❌ Error sending signal: {e}")
 
-def execute_order(side, amount=0.01, reason="OpenClaw_Direct"):
+def execute_order(side, amount=0.01, reason="OpenClaw_Direct", sentiment="NEUTRAL", confidence=0.5):
     """
     Ejecuta una orden directa en el bot Antigravity.
     side: 'buy' o 'sell'
@@ -111,7 +138,9 @@ def execute_order(side, amount=0.01, reason="OpenClaw_Direct"):
     payload = {
         "side": side,
         "amount": amount,
-        "reason": reason
+        "reason": reason,
+        "sentiment": sentiment,
+        "confidence": confidence
     }
     
     print(f"⚡ Executing Direct Order: {side.upper()} {amount}...")
@@ -138,6 +167,12 @@ def run_openclaw_cycle():
     print("--- Cycle End ---\n")
 
 if __name__ == "__main__":
+    sleep_interval = int(os.getenv("SLEEP_INTERVAL", 60))
+    print(f"⏱️ OpenClaw loop started. Interval: {sleep_interval}s")
     while True:
-        run_openclaw_cycle()
-        time.sleep(60) 
+        try:
+            run_openclaw_cycle()
+        except Exception as e:
+            print(f"🔥 Critical Error in Main Loop: {e}")
+        
+        time.sleep(sleep_interval) 

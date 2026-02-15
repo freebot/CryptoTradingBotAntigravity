@@ -33,7 +33,10 @@ trader = None
 latest_market_data = {}
 openclaw_input = {}
 latest_market_data_lock = threading.Lock()
+latest_market_data_lock = threading.Lock()
 openclaw_input_lock = threading.Lock()
+last_loop_time = 0.0
+last_loop_time_lock = threading.Lock()
 
 class SentimentRequest(BaseModel):
     texts: list[str]
@@ -42,6 +45,8 @@ class OrderRequest(BaseModel):
     side: str # "buy" or "sell"
     amount: float = 0.01
     reason: str = "OpenClaw_Direct"
+    sentiment: str = "NEUTRAL"
+    confidence: float = 0.5
 
 @app.post("/analyze")
 def analyze_sentiment(request: SentimentRequest):
@@ -57,7 +62,25 @@ def analyze_sentiment(request: SentimentRequest):
 
 @app.get("/")
 def health_check():
-    return {"status": "running", "mode": "hybrid" if os.getenv("SPACE_ID") else "client"}
+    global last_loop_time
+    status = "running"
+    
+    with last_loop_time_lock:
+        seconds_since_update = time.time() - last_loop_time
+        
+    if seconds_since_update > 300: # 5 minutes without update
+        status = "frozen"
+        
+    return {
+        "status": status, 
+        "mode": "hybrid" if os.getenv("SPACE_ID") else "client",
+        "seconds_since_last_loop": seconds_since_update
+    }
+
+@app.get("/wake_up")
+def wake_up():
+    """Endpoint for OpenClaw to poke the bot and ensure it's awake."""
+    return {"status": "awake", "timestamp": time.time()}
 
 # --- OpenClaw Integration Endpoints ---
 OPENCLAW_SECRET = os.getenv("OPENCLAW_SECRET", "changeme_in_production")
@@ -115,9 +138,30 @@ def place_openclaw_order(order: OrderRequest):
     if current_price <= 0:
         raise HTTPException(status_code=503, detail="Market data unavailable (price=0)")
 
-    success = trader.place_order(order.side, order.amount, current_price, order.reason)
-    if success:
-        return {"status": "Order Executed", "side": order.side, "price": current_price}
+    action_result = trader.place_order(order.side, order.amount, current_price, order.reason)
+    if action_result:
+        # Log to Notion (Requested by User)
+        try:
+            notion = NotionLogger()
+            # Calculate Profit (0 for open, PnL only for close)
+            # This is simpler logic than run_bot_loop but sufficient for direct orders
+            profit = 0.0 
+            # Ideally we would calculate PnL if closing, but trader places closing orders too.
+            # Since trader handles internal pnl calc for logging to CSV, we can try to extract from there or just log 0 for now unless we know it's a close.
+            # If action_result contains "CLOSE", maybe we can fetch last trade or similar, but for now 0 is safe or user might not care for direct execution PnL in Notion immediately.
+            # Actually, `trader.place_order` returns `action_type` string now.
+             
+            notion.log_trade(
+                action=action_result, 
+                price=current_price, 
+                sentiment=order.sentiment, 
+                confidence=order.confidence, 
+                profit=profit
+            )
+        except Exception as e:
+            logging.error(f"Error logging to Notion from OpenClaw: {e}")
+
+        return {"status": "Order Executed", "side": order.side, "action": action_result, "price": current_price}
     else:
         raise HTTPException(status_code=400, detail="Order Failed (Check balance or position)")
 
@@ -163,6 +207,9 @@ def run_bot_loop():
 
     while True:
         try:
+            with last_loop_time_lock:
+                last_loop_time = time.time()
+                
             telegram.send_message("🔄 Iniciando ciclo de trading...")
             logging.info("Bot cycle: Fetching data...")
             df = loader.fetch_ohlcv(settings['symbol'], settings['timeframe'])

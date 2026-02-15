@@ -179,7 +179,7 @@ class Trader:
                     print(f"💰 {action_type} Completado. PnL Est: {pnl:.2f}%")
                     self._save_to_csv(timestamp, action_type, price, reason, pnl)
                 
-                return True
+                return action_type
                 
             except Exception as e:
                 print(f"❌ Error Alpaca Order: {e}")
@@ -201,7 +201,7 @@ class Trader:
                 self.position = "NONE"
                 self.entry_price = 0.0
                 self._save_to_csv(timestamp, action_type, price, reason, pnl)
-            return True
+            return action_type
 
     def get_balance(self):
         if self.trading_client:

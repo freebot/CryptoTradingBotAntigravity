@@ -1,54 +1,87 @@
-# Integración de OpenClaw con Antigravity
+# Integración Segura de OpenClaw con Antigravity
 
-Este documento describe cómo conectar **OpenClaw** (u otro agente externo) con el **Bot de Trading Antigravity**.
+Este documento describe cómo conectar **OpenClaw** (corriendo en AWS u otro servidor lejano) con el **Bot de Trading Antigravity** (en Hugging Face) de manera segura y funcional.
+
+## Capacidades
+
+1.  **Comunicación Segura**: Autenticación vía `X-Auth-Token` (Header).
+2.  **Ejecución de Órdenes**: OpenClaw puede ejecutar compras/ventas directamente.
+3.  **Registro en Notion**: Todas las operaciones exitosas se registran automáticamente en tu base de datos de Notion con detalles de sentimiento y confianza.
+4.  **Datos de Mercado**: OpenClaw recibe precio, tendencia, RSI y volumen en tiempo real.
 
 ## Arquitectura
 
-1. **Antigravity (Servidor)**: El bot de trading principal ahora expone una API REST local en el puerto `8000`.
-   - `GET /market/status`: Provee precio actual, indicadores técnicos (RSI, etc.) y estado.
-   - `GET /markets/status`: Alias del anterior (para evitar errores de typo).
-   - `POST /openclaw/signal`: Recibe señales de trading ("buy", "sell", "hold") y análisis de sentimiento.
-   - `POST /openclaw/orders`: (NUEVO) Ejecuta una orden de compra/venta inmediatamente. JSON: `{"side": "buy", "amount": 0.01}`.
+-   **Servidor**: Antigravity Bot (Hugging Face Space)
+    -   API: `https://[TU_ESPACIO].hf.space`
+    -   Endpoints:
+        -   `GET /market/status`: Estado del mercado.
+        -   `POST /openclaw/orders`: Ejecución inmediata + Log a Notion.
+        -   `POST /openclaw/signal`: Envío de señales de inversión (Sugerencias).
 
-2. **OpenClaw (Cliente)**: Un script de Python (Skill) que consulta el estado del mercado, aplica inteligencia (LLM o Algorítmica), y envía órdenes al bot.
+-   **Cliente**: OpenClaw (AWS EC2 e3.micro)
+    -   Script: `scripts/openclaw_skill.py`
+    -   Lógica: Consulta mercado -> Decide -> Ejecuta.
 
-## Pasos para Ejecutar
+## Guía de Despliegue en AWS (e3.micro)
 
-### Lado 1: Antigravity (El Bot)
-El bot ahora inicia automáticamente el servidor API cuando se ejecuta.
+### 1. Preparar el Servidor AWS
+Conéctate a tu instancia e3.micro vía SSH:
+```bash
+ssh -i "tu-clave.pem" ubuntu@tu-instancia-aws.com
+```
 
-1.  Instalar dependencias nuevas:
-    ```bash
-    pip install -r requirements.txt
-    ```
-2.  Ejecutar el bot normalmente:
-    ```bash
-    python main.py
-    ```
-    *Verás en los logs que el servidor API inicia en `http://0.0.0.0:8000`.*
+### 2. Configurar el Entorno
+Ejecuta estos comandos para preparar Python y las dependencias:
+```bash
+sudo apt update && sudo apt install -y python3 python3-pip
+pip3 install requests
+```
 
-### Lado 2: OpenClaw (El Agente)
-Tienes un script listo para usar en `scripts/openclaw_skill.py`.
+### 3. Instalar el Agente OpenClaw
+Puedes clonar el repositorio completo o simplemente crear el archivo `openclaw_skill.py`:
 
-1.  **Configurar OpenClaw**:
-    -   Asegúrate de que OpenClaw tenga acceso a Python y a la red local/internet.
-    -   Instala la librería `requests` en el entorno de OpenClaw.
-    -   **IMPORTANTE**: Configura la variable de entorno `OPENCLAW_SECRET`.
-        -   En Linux/Mac: `export OPENCLAW_SECRET="tu_secreto_seguro"`
-        -   O edita el script para pruebas (no recomendado).
-        -   El valor por defecto es "changeme_in_production" (INSEGURO).
+**Opción A (Clonar Repo):**
+```bash
+git clone https://github.com/tu-usuario/CryptoTradingBotAntigravity.git
+cd CryptoTradingBotAntigravity
+```
 
-2.  **Ejecutar el Skill**:
-    Puedes ejecutar el script manualmente para probar la conexión:
-    ```bash
-    # Ejemplo con secreto
-    OPENCLAW_SECRET="mi_token_secreto" python scripts/openclaw_skill.py
-    ```
+**Opción B (Solo el Script):**
+```bash
+mkdir openclaw && cd openclaw
+nano openclaw_skill.py
+# (Copea el contenido de scripts/openclaw_skill.py aquí)
+```
 
-    O configurarlo dentro de OpenClaw como una tarea programada (cron job) para que corra cada minuto.
+### 4. Ejecutar con Seguridad
+Necesitas definir dos variables de entorno claves:
+1.  `ANTIGRAVITY_URL`: La URL de tu Space en Hugging Face (ej. `https://fr33b0t-crypto-bot.hf.space`).
+2.  `OPENCLAW_SECRET`: Tu contraseña secreta (Debe coincidir con la variable `OPENCLAW_SECRET` en los Secrets de Hugging Face).
 
-## Personalización de Inteligencia
-Edita `scripts/openclaw_skill.py` en la función `analyze_market(data)`.
-Ahí puedes conectar tu LLM favorito o agregar lógica compleja. El bot Antigravity priorizará las señales de OpenClaw sobre su estrategia técnica estándar si la confianza es alta.
+Ejecuta el agente:
+```bash
+export ANTIGRAVITY_URL="https://fr33b0t-crypto-bot.hf.space"
+export OPENCLAW_SECRET="tu_super_secreto_seguro"
 
-También puedes usar la función `execute_order(side="buy", amount=..., reason="...")` si prefieres ejecución directa e inmediata sin pasar por el sistema de señales/confianza.
+# Ejecutar en segundo plano (para que no se cierre al salir de SSH)
+nohup python3 openclaw_skill.py > openclaw.log 2>&1 &
+```
+
+Para ver los logs:
+```bash
+tail -f openclaw.log
+```
+
+## Configuración en Hugging Face (Servidor)
+
+Asegúrate de configurar los **Secrets** en tu Space de Hugging Face:
+1.  Ve a **Settings** -> **Variables and secrets**.
+2.  Añade `OPENCLAW_SECRET` con el mismo valor que usaste en AWS.
+3.  Asegúrate de que `NOTION_TOKEN` y `NOTION_DATABASE_ID` estén configurados para que el registro funcione.
+
+## Personalización de la Estrategia
+Edita la función `analyze_market(data)` en `openclaw_skill.py` para inyectar tu propia lógica o conectar con un LLM externo.
+Cuando OpenClaw decida operar, llamará a `execute_order(side, amount, ...)` que automáticamente:
+1.  Enviará la orden a Antigravity.
+2.  Antigravity ejecutará la orden en Alpaca.
+3.  Antigravity registrará la operación en Notion.
