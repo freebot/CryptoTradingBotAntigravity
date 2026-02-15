@@ -17,6 +17,22 @@ if not api_key or not secret_key:
     st.error("❌ Faltan las llaves de Alpaca (API_KEY o SECRET_KEY) en los Secrets.")
     st.stop()
 
+# --- START BACKEND (Only in Hugging Face) ---
+import subprocess
+import sys
+
+@st.cache_resource
+def start_backend():
+    # Check if we are in a Space (SPACE_ID env var exists)
+    if os.getenv("SPACE_ID"):
+        # Run main.py as a separate process
+        # This starts the API server (port 8000) AND the trading loop
+        return subprocess.Popen([sys.executable, "main.py"])
+    return None
+
+# Start backend if not already running (Streamlit re-runs script, but cache_resource runs only once)
+_ = start_backend()
+
 # --- CONEXIONES ---
 @st.cache_resource
 def init_clients():

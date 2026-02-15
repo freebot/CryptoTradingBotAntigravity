@@ -9,3 +9,5 @@ uvicorn
 pydantic
 requests
 upstash-redis
+transformers
+torch

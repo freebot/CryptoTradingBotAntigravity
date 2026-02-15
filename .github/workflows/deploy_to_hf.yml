@@ -15,7 +15,27 @@ jobs:
           fetch-depth: 0
           lfs: true
 
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install huggingface_hub
+
+      - name: Update Hugging Face Secrets
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          CRYPTOPANIC_API_KEY: ${{ secrets.CRYPTOPANIC_API_KEY }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          OPENCLAW_SECRET: ${{ secrets.OPENCLAW_SECRET }}
+        run: python scripts/update_hf_secrets.py
+
       - name: Push to Distributed Brains
+
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
